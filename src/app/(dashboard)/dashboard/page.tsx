@@ -1,12 +1,19 @@
 'use client';
 
 import { useStore } from '@/lib/store';
-import { StatsCard } from '@/components/dashboard/stats-card';
 import { DataManager } from '@/components/data-manager';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Building2, ArrowRight } from 'lucide-react';
+import { 
+  Plus, 
+  Building2, 
+  ArrowRight, 
+  CheckCircle, 
+  Clock, 
+  TrendingUp, 
+  TrendingDown 
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -46,33 +53,78 @@ export default function DashboardPage() {
 
       <DataManager />
 
+      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatsCard
-          title="Total Companies"
-          value={stats.totalCompanies}
-          icon="building"
-          trend={{ value: 12, isPositive: true }}
-        />
-        <StatsCard
-          title="Active Companies"
-          value={stats.activeCompanies}
-          icon="check"
-          trend={{ value: 8, isPositive: true }}
-        />
-        <StatsCard
-          title="New Companies"
-          value={stats.newCompanies}
-          icon="plus"
-          trend={{ value: 3, isPositive: true }}
-        />
-        <StatsCard
-          title="Pending Tasks"
-          value={stats.pendingTasks}
-          icon="clock"
-          trend={{ value: 5, isPositive: false }}
-        />
+        <Card className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-slate-500">Total Companies</p>
+              <p className="text-3xl font-bold text-slate-900 mt-2">{stats.totalCompanies}</p>
+              <div className="flex items-center gap-1 mt-2">
+                <TrendingUp className="w-4 h-4 text-green-600" />
+                <span className="text-sm font-medium text-green-600">12%</span>
+                <span className="text-sm text-slate-500">vs last month</span>
+              </div>
+            </div>
+            <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
+              <Building2 className="w-6 h-6 text-blue-600" />
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-slate-500">Active Companies</p>
+              <p className="text-3xl font-bold text-slate-900 mt-2">{stats.activeCompanies}</p>
+              <div className="flex items-center gap-1 mt-2">
+                <TrendingUp className="w-4 h-4 text-green-600" />
+                <span className="text-sm font-medium text-green-600">8%</span>
+                <span className="text-sm text-slate-500">vs last month</span>
+              </div>
+            </div>
+            <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
+              <CheckCircle className="w-6 h-6 text-green-600" />
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-slate-500">New Companies</p>
+              <p className="text-3xl font-bold text-slate-900 mt-2">{stats.newCompanies}</p>
+              <div className="flex items-center gap-1 mt-2">
+                <TrendingUp className="w-4 h-4 text-green-600" />
+                <span className="text-sm font-medium text-green-600">3%</span>
+                <span className="text-sm text-slate-500">vs last month</span>
+              </div>
+            </div>
+            <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center">
+              <Plus className="w-6 h-6 text-purple-600" />
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-slate-500">Pending Tasks</p>
+              <p className="text-3xl font-bold text-slate-900 mt-2">{stats.pendingTasks}</p>
+              <div className="flex items-center gap-1 mt-2">
+                <TrendingDown className="w-4 h-4 text-red-600" />
+                <span className="text-sm font-medium text-red-600">5%</span>
+                <span className="text-sm text-slate-500">vs last month</span>
+              </div>
+            </div>
+            <div className="w-12 h-12 rounded-lg bg-amber-100 flex items-center justify-center">
+              <Clock className="w-6 h-6 text-amber-600" />
+            </div>
+          </div>
+        </Card>
       </div>
 
+      {/* Companies List */}
       <Card className="p-6">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-semibold text-slate-900">Companies</h2>

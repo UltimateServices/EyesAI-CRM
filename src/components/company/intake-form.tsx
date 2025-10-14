@@ -10,21 +10,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   CheckCircle, 
   Save, 
-  Plus, 
-  X,
-  Building2,
-  FileText,
-  Wrench,
-  Image,
-  Globe,
-  Search,
-  Code,
+  Building2, 
+  FileText, 
+  Star, 
+  Globe, 
+  Image as ImageIcon, 
+  MessageSquare, 
+  BarChart, 
+  MapPin,
   Sparkles,
   Loader2,
-  SearchCheck,
-  Upload,
-  Video as VideoIcon,
-  Trash2,
+  X
 } from 'lucide-react';
 
 interface IntakeFormProps {
@@ -38,232 +34,64 @@ export function IntakeForm({ company }: IntakeFormProps) {
   
   const existingIntake = getIntakeByCompanyId(company.id);
 
-  const [activeTab, setActiveTab] = useState('company-info');
-  const [isEnriching, setIsEnriching] = useState(false);
-  const [isFilling, setIsFilling] = useState(false);
-  const [enrichmentMetadata, setEnrichmentMetadata] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState('part1');
   const [formData, setFormData] = useState<Partial<Intake>>(existingIntake || {
     id: `intake-${company.id}`,
     companyId: company.id,
     status: 'draft',
-    officialName: company.name,
-    mainPhone: company.phone,
-    physicalAddress: company.address,
-    emails: company.contactEmail ? [company.contactEmail] : [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   });
 
-  const [services, setServices] = useState<Array<{ name: string; description: string; price?: string }>>(
-    existingIntake?.services || [{ name: '', description: '', price: '' }]
-  );
-
-  const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [isDraggingLogo, setIsDraggingLogo] = useState(false);
-  const [isDraggingImages, setIsDraggingImages] = useState(false);
-  const [isDraggingVideos, setIsDraggingVideos] = useState(false);
+  const [showPasteModal, setShowPasteModal] = useState(false);
+  const [documentText, setDocumentText] = useState('');
+  const [isParsing, setIsParsing] = useState(false);
+  const [parseError, setParseError] = useState('');
 
   const updateField = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const addService = () => {
-    setServices([...services, { name: '', description: '', price: '' }]);
-  };
-
-  const updateService = (index: number, field: string, value: string) => {
-    const updated = [...services];
-    updated[index] = { ...updated[index], [field]: value };
-    setServices(updated);
-    updateField('services', updated.filter(s => s.name.trim() !== ''));
-  };
-
-  const removeService = (index: number) => {
-    setServices(services.filter((_, i) => i !== index));
-  };
-
-  const handleLogoDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDraggingLogo(false);
-    const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith('image/')) {
-      setLogoFile(file);
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        updateField('logoUrl', event.target?.result as string);
-      };
-      reader.readAsDataURL(file);
+  const handlePasteIntake = async () => {
+    if (!documentText.trim()) {
+      setParseError('Please paste document text first');
+      return;
     }
-  };
 
-  const handleLogoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && file.type.startsWith('image/')) {
-      setLogoFile(file);
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        updateField('logoUrl', event.target?.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
+    setIsParsing(true);
+    setParseError('');
 
-  const removeLogo = () => {
-    setLogoFile(null);
-    updateField('logoUrl', '');
-  };
-
-  const handleImagesDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDraggingImages(false);
-    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
-    
-    files.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const currentUrls = formData.galleryImages || [];
-        updateField('galleryImages', [...currentUrls, event.target?.result as string]);
-      };
-      reader.readAsDataURL(file);
-    });
-  };
-
-  const handleImagesSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []).filter(f => f.type.startsWith('image/'));
-    
-    files.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const currentUrls = formData.galleryImages || [];
-        updateField('galleryImages', [...currentUrls, event.target?.result as string]);
-      };
-      reader.readAsDataURL(file);
-    });
-  };
-
-  const removeImage = (index: number) => {
-    const currentUrls = formData.galleryImages || [];
-    updateField('galleryImages', currentUrls.filter((_, i) => i !== index));
-  };
-
-  const handleVideosDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDraggingVideos(false);
-    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('video/'));
-    
-    const videoUrls = files.map(f => URL.createObjectURL(f));
-    updateField('videoLinks', [...(formData.videoLinks || []), ...videoUrls]);
-  };
-
-  const handleVideosSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []).filter(f => f.type.startsWith('video/'));
-    
-    const videoUrls = files.map(f => URL.createObjectURL(f));
-    updateField('videoLinks', [...(formData.videoLinks || []), ...videoUrls]);
-  };
-
-  const removeVideo = (index: number) => {
-    const currentUrls = formData.videoLinks || [];
-    updateField('videoLinks', currentUrls.filter((_, i) => i !== index));
-  };
-
-  const autoEnrich = async () => {
-    setIsEnriching(true);
     try {
-      console.log('Starting smart enrichment...');
-      
-      const response = await fetch('/api/enrich-company-dual', {
+      console.log('Sending document to AI for parsing...');
+
+      const response = await fetch('/api/parse-intake-document', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          website: company.website,
-          companyName: company.name,
-        }),
+        body: JSON.stringify({ documentText }),
       });
 
       const result = await response.json();
 
       if (result.success && result.data) {
-        console.log('Enrichment successful:', result.data);
+        console.log('Document parsed successfully:', result.data);
         
+        // Merge parsed data into formData
         setFormData(prev => ({
           ...prev,
           ...result.data,
         }));
 
-        if (result.data.services && result.data.services.length > 0) {
-          setServices(result.data.services);
-        }
-
-        setEnrichmentMetadata(result.metadata);
-
-        const confidence = result.metadata?.overallConfidence || 0;
-        alert(`✅ Auto-enrichment complete!\n\nConfidence: ${confidence}%\nHigh confidence: ${result.metadata?.highConfidenceFields || 0} fields\n\nClick "Fill Missing" if needed, then review and mark complete.`);
+        alert('✅ Document parsed successfully!\n\nAll fields have been auto-filled. Review the data and click "Save Draft" when ready.');
+        setShowPasteModal(false);
+        setDocumentText('');
       } else {
-        throw new Error(result.error || 'Enrichment failed');
+        throw new Error(result.error || 'Parsing failed');
       }
     } catch (error: any) {
-      console.error('Enrichment error:', error);
-      alert('❌ Enrichment failed: ' + error.message);
+      console.error('Parse error:', error);
+      setParseError('❌ Failed to parse document: ' + error.message);
     } finally {
-      setIsEnriching(false);
-    }
-  };
-
-  const fillMissing = async () => {
-    setIsFilling(true);
-    try {
-      console.log('Filling missing fields...');
-      
-      const missingFields: string[] = [];
-      const checkFields = [
-        'mainPhone', 'emails', 'physicalAddress', 'businessHours', 
-        'category', 'founded', 'licenses', 'serviceAreas', 'shortBlurb',
-        'fullAbout', 'missionStatement'
-      ];
-      
-      checkFields.forEach(field => {
-        const value = formData[field as keyof typeof formData];
-        if (!value || value === '' || (Array.isArray(value) && value.length === 0)) {
-          missingFields.push(field);
-        }
-      });
-
-      if (missingFields.length === 0) {
-        alert('✅ No missing fields! All data is filled in.');
-        return;
-      }
-
-      const response = await fetch('/api/enrich-missing', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          companyName: company.name,
-          website: company.website,
-          existingData: formData,
-          missingFields,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (result.success && result.data) {
-        console.log('Missing fields filled:', result.data);
-        
-        setFormData(prev => ({
-          ...prev,
-          ...result.data,
-        }));
-
-        alert(`✅ Filled ${missingFields.length} missing fields!\n\nReview the data and make corrections as needed.`);
-      } else {
-        throw new Error(result.error || 'Fill missing failed');
-      }
-    } catch (error: any) {
-      console.error('Fill missing error:', error);
-      alert('❌ Fill missing failed: ' + error.message);
-    } finally {
-      setIsFilling(false);
+      setIsParsing(false);
     }
   };
 
@@ -273,7 +101,6 @@ export function IntakeForm({ company }: IntakeFormProps) {
       id: formData.id || `intake-${company.id}`,
       companyId: company.id,
       status: 'draft',
-      services: services.filter(s => s.name.trim() !== ''),
       updatedAt: new Date().toISOString(),
     } as Intake;
 
@@ -288,8 +115,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
       companyId: company.id,
       status: 'complete',
       completedAt: new Date().toISOString(),
-      completedBy: 'John VA',
-      services: services.filter(s => s.name.trim() !== ''),
+      completedBy: 'VA',
       updatedAt: new Date().toISOString(),
     } as Intake;
 
@@ -301,13 +127,18 @@ export function IntakeForm({ company }: IntakeFormProps) {
   };
 
   const tabs = [
-    { id: 'company-info', label: 'Company Info', icon: Building2 },
-    { id: 'services', label: 'Services', icon: Wrench },
-    { id: 'media', label: 'Media', icon: Image },
-    { id: 'about', label: 'About', icon: FileText },
-    { id: 'online', label: 'Online Presence', icon: Globe },
-    { id: 'seo', label: 'SEO & Meta', icon: Search },
-    { id: 'technical', label: 'Technical', icon: Code },
+    { id: 'part1', label: 'Part 1: Basic Info', icon: Building2 },
+    { id: 'part2', label: 'Part 2: Contact', icon: FileText },
+    { id: 'part3', label: 'Part 3: Geolocation', icon: MapPin },
+    { id: 'part4', label: 'Part 4: Service Area', icon: MapPin },
+    { id: 'part5', label: 'Part 5: Hours', icon: FileText },
+    { id: 'part6', label: 'Part 6: Services', icon: FileText },
+    { id: 'part7', label: 'Part 7: Reviews', icon: Star },
+    { id: 'part8', label: 'Part 8: Metrics', icon: BarChart },
+    { id: 'part9', label: 'Part 9: Social Media', icon: Globe },
+    { id: 'part10', label: 'Part 10: Visual Assets', icon: ImageIcon },
+    { id: 'part11', label: 'Part 11: FAQs', icon: MessageSquare },
+    { id: 'seo', label: 'SEO Summary', icon: BarChart },
   ];
 
   return (
@@ -321,63 +152,19 @@ export function IntakeForm({ company }: IntakeFormProps) {
             <div className="flex-1">
               <h3 className="font-semibold text-slate-900">VA Intake Process</h3>
               <p className="text-sm text-slate-600 mt-1">
-                1) Click "Smart Auto-Enrich" to scan website. 2) Click "Fill Missing" for gaps. 3) Review & mark complete.
+                Click "Paste Intake" to upload full document and AI will auto-fill all fields, or manually edit each section.
               </p>
-              {enrichmentMetadata && (
-                <div className="flex gap-4 mt-2 text-xs">
-                  <span className="text-green-700 font-medium">
-                    Confidence: {enrichmentMetadata.overallConfidence}%
-                  </span>
-                  <span className="text-blue-700">
-                    High: {enrichmentMetadata.highConfidenceFields} fields
-                  </span>
-                  <span className="text-amber-700">
-                    Medium: {enrichmentMetadata.mediumConfidenceFields} fields
-                  </span>
-                </div>
-              )}
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Button
-              onClick={autoEnrich}
-              disabled={isEnriching || isFilling}
+              onClick={() => setShowPasteModal(true)}
               className="gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
               size="sm"
             >
-              {isEnriching ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Enriching...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4" />
-                  Smart Auto-Enrich
-                </>
-              )}
+              <Sparkles className="w-4 h-4" />
+              Paste Intake
             </Button>
-
-            <Button
-              onClick={fillMissing}
-              disabled={isEnriching || isFilling}
-              variant="outline"
-              className="gap-2 border-green-600 text-green-700 hover:bg-green-50"
-              size="sm"
-            >
-              {isFilling ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Filling...
-                </>
-              ) : (
-                <>
-                  <SearchCheck className="w-4 h-4" />
-                  Fill Missing
-                </>
-              )}
-            </Button>
-            
             <Badge variant="secondary" className={formData.status === 'complete' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}>
               {formData.status === 'complete' ? 'Complete' : 'In Progress'}
             </Badge>
@@ -385,8 +172,100 @@ export function IntakeForm({ company }: IntakeFormProps) {
         </div>
       </Card>
 
+      {/* Paste Intake Modal */}
+      {showPasteModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="max-w-4xl w-full max-h-[90vh] overflow-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <Sparkles className="w-6 h-6 text-purple-600" />
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-900">Paste Intake Document</h3>
+                    <p className="text-sm text-slate-600">AI will automatically parse and fill all fields</p>
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setShowPasteModal(false);
+                    setDocumentText('');
+                    setParseError('');
+                  }}
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Paste Complete Intake Document
+                  </label>
+                  <textarea
+                    value={documentText}
+                    onChange={(e) => setDocumentText(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                    rows={25}
+                    placeholder="Paste the entire intake document here (Part 1 - Basic Info, Part 2 - Contact, Part 3 - Geolocation, etc.)
+
+Example:
+Part 1 – Basic Business Information
+
+Legal/Canonical Name: A & S Deli (trading as A&S Italian Marketplace / A&S Fine Foods Oceanside)
+Also Known As (aliases): A&S Oceanside • A&S Fine Foods Oceanside
+Industry / Category: Italian deli • Gourmet marketplace • Caterer
+..."
+                  />
+                  <p className="text-xs text-slate-500 mt-2">
+                    {documentText.length.toLocaleString()} characters • AI will extract and populate all fields automatically
+                  </p>
+                </div>
+
+                {parseError && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-sm text-red-700">{parseError}</p>
+                  </div>
+                )}
+
+                <div className="flex justify-between items-center pt-4 border-t">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowPasteModal(false);
+                      setDocumentText('');
+                      setParseError('');
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handlePasteIntake}
+                    disabled={isParsing || !documentText.trim()}
+                    className="gap-2 bg-gradient-to-r from-purple-600 to-blue-600"
+                  >
+                    {isParsing ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Parsing Document...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        Auto-Fill All Fields
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="bg-white border border-slate-200 p-1">
+        <TabsList className="bg-white border border-slate-200 p-1 flex-wrap h-auto">
           {tabs.map((tab) => (
             <TabsTrigger 
               key={tab.id} 
@@ -399,720 +278,766 @@ export function IntakeForm({ company }: IntakeFormProps) {
           ))}
         </TabsList>
 
-        <TabsContent value="company-info" className="space-y-4 mt-4">
+        {/* PART 1 - Basic Business Information */}
+        <TabsContent value="part1" className="space-y-4 mt-4">
           <Card className="p-6">
-            <h4 className="font-semibold text-slate-900 mb-4">Company Identity</h4>
-            <div className="grid grid-cols-2 gap-4">
+            <h4 className="font-semibold text-slate-900 mb-4">Part 1 – Basic Business Information</h4>
+            <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Official Business Name *
+                  Legal/Canonical Name
                 </label>
-                <input
-                  type="text"
-                  value={formData.officialName || ''}
-                  onChange={(e) => updateField('officialName', e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  placeholder="Major Dumpsters LLC"
+                <textarea
+                  value={formData.legalCanonicalName || ''}
+                  onChange={(e) => updateField('legalCanonicalName', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={2}
+                  placeholder="A & S Deli (trading as A&S Italian Marketplace / A&S Fine Foods Oceanside)"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Business Category / Industry *
+                  Also Known As (aliases)
                 </label>
-                <input
-                  type="text"
-                  value={formData.category || ''}
-                  onChange={(e) => updateField('category', e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  placeholder="Dumpster Rental / Waste Services"
+                <textarea
+                  value={formData.alsoKnownAs || ''}
+                  onChange={(e) => updateField('alsoKnownAs', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={2}
+                  placeholder="A&S Oceanside • A&S Fine Foods Oceanside"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Founded / Years in Business
+                  Industry / Category
                 </label>
-                <input
-                  type="text"
-                  value={formData.founded || ''}
-                  onChange={(e) => updateField('founded', e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  placeholder="2023"
+                <textarea
+                  value={formData.industryCategoryBadges || ''}
+                  onChange={(e) => updateField('industryCategoryBadges', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={2}
+                  placeholder="Italian deli • Gourmet marketplace • Caterer"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Business Hours
+                  Year Established (local store)
                 </label>
-                <input
-                  type="text"
-                  value={formData.businessHours || ''}
-                  onChange={(e) => updateField('businessHours', e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  placeholder="Mon-Fri 8am-5pm"
+                <textarea
+                  value={formData.yearEstablished || ''}
+                  onChange={(e) => updateField('yearEstablished', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={2}
+                  placeholder="1985 (A&S Oceanside lineage from A&S Fine Foods founded 1948)"
                 />
               </div>
 
-              <div className="col-span-2">
+              <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  License # / Certifications
+                  Ownership / Heritage
+                </label>
+                <textarea
+                  value={formData.ownershipHeritage || ''}
+                  onChange={(e) => updateField('ownershipHeritage', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={2}
+                  placeholder="Family-owned; Nicolo family (owner: Anthony Nicolo)"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Business Status
+                </label>
+                <textarea
+                  value={formData.businessStatus || ''}
+                  onChange={(e) => updateField('businessStatus', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={2}
+                  placeholder="Open for walk-in orders, catering, and online ordering (pickup/delivery via partners)"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Tagline/Slogan (site)
                 </label>
                 <input
                   type="text"
-                  value={formData.licenses || ''}
-                  onChange={(e) => updateField('licenses', e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  placeholder="NY DEC Hauler Permit #1234"
+                  value={formData.taglineSlogan || ''}
+                  onChange={(e) => updateField('taglineSlogan', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  placeholder='"Dine as if you were in Italy."'
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Short Description
+                </label>
+                <textarea
+                  value={formData.shortDescription || ''}
+                  onChange={(e) => updateField('shortDescription', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={3}
+                  placeholder="Long-running Italian deli & marketplace offering heroes, hot/cold prepared foods, fresh meats and cheeses, housemade specialties, and full catering."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Verification Tier
+                </label>
+                <input
+                  type="text"
+                  value={formData.verificationTier || ''}
+                  onChange={(e) => updateField('verificationTier', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  placeholder="Verified"
                 />
               </div>
             </div>
           </Card>
+        </TabsContent>
 
+        {/* PART 2 - Contact Information */}
+        <TabsContent value="part2" className="space-y-4 mt-4">
           <Card className="p-6">
-            <h4 className="font-semibold text-slate-900 mb-4">Contact & Location</h4>
-            <div className="grid grid-cols-2 gap-4">
+            <h4 className="font-semibold text-slate-900 mb-4">Part 2 – Contact Information</h4>
+            <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Main Phone *
+                  Website
                 </label>
                 <input
-                  type="tel"
+                  type="url"
+                  value={formData.website || ''}
+                  onChange={(e) => updateField('website', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  placeholder="https://asoceanside.com/"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Primary Phone
+                </label>
+                <input
+                  type="text"
                   value={formData.mainPhone || ''}
                   onChange={(e) => updateField('mainPhone', e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  placeholder="888-555-5555"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  placeholder="(516) 764-4606 (digits: 5167644606)"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Email Address *
-                </label>
-                <input
-                  type="email"
-                  value={formData.emails?.[0] || ''}
-                  onChange={(e) => updateField('emails', [e.target.value])}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  placeholder="info@company.com"
-                />
-              </div>
-
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Physical Address *
+                  Address (NAP)
                 </label>
                 <input
                   type="text"
                   value={formData.physicalAddress || ''}
                   onChange={(e) => updateField('physicalAddress', e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  placeholder="123 Main St, Oceanside NY 11572"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  placeholder="3382 Long Beach Rd, Oceanside, NY 11572"
                 />
               </div>
 
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Service Areas (comma separated)
-                </label>
-                <input
-                  type="text"
-                  value={formData.serviceAreas?.join(', ') || ''}
-                  onChange={(e) => updateField('serviceAreas', e.target.value.split(',').map(s => s.trim()))}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  placeholder="Nassau County, Brooklyn, Queens"
-                />
-              </div>
-
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Google Maps Link
-                </label>
-                <input
-                  type="url"
-                  value={formData.mapLink || ''}
-                  onChange={(e) => updateField('mapLink', e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  placeholder="https://maps.google.com/..."
-                />
-              </div>
-            </div>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="services" className="space-y-4 mt-4">
-          <Card className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h4 className="font-semibold text-slate-900">Services Offered</h4>
-              <Button onClick={addService} size="sm" className="gap-2">
-                <Plus className="w-4 h-4" />
-                Add Service
-              </Button>
-            </div>
-
-            <div className="space-y-4">
-              {services.map((service, index) => (
-                <div key={index} className="flex gap-3 items-start p-4 bg-slate-50 rounded-lg">
-                  <div className="flex-1 grid grid-cols-3 gap-3">
-                    <input
-                      type="text"
-                      value={service.name}
-                      onChange={(e) => updateService(index, 'name', e.target.value)}
-                      className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                      placeholder="Service name"
-                    />
-                    <input
-                      type="text"
-                      value={service.description}
-                      onChange={(e) => updateService(index, 'description', e.target.value)}
-                      className="col-span-2 px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                      placeholder="Brief description"
-                    />
-                  </div>
-                  {services.length > 1 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeService(index)}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="media" className="space-y-4 mt-4">
-          <Card className="p-6">
-            <h4 className="font-semibold text-slate-900 mb-6">Media Assets</h4>
-            
-            {/* Logo Upload */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-slate-700 mb-3">
-                Logo
-              </label>
-              <div
-                onDragOver={(e) => { e.preventDefault(); setIsDraggingLogo(true); }}
-                onDragLeave={() => setIsDraggingLogo(false)}
-                onDrop={handleLogoDrop}
-                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-                  isDraggingLogo 
-                    ? 'border-blue-500 bg-blue-50' 
-                    : 'border-slate-300 hover:border-slate-400'
-                }`}
-              >
-                {formData.logoUrl ? (
-                  <div className="flex flex-col items-center gap-3">
-                    <img src={formData.logoUrl} alt="Logo" className="w-32 h-32 object-contain" />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={removeLogo}
-                      className="gap-2 text-red-600 hover:text-red-700"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Remove Logo
-                    </Button>
-                  </div>
-                ) : (
-                  <>
-                    <Upload className="w-12 h-12 text-slate-400 mx-auto mb-3" />
-                    <p className="text-sm text-slate-600 mb-2">
-                      Drag & drop logo here, or click to browse
-                    </p>
-                    <p className="text-xs text-slate-500">PNG, JPG, SVG up to 5MB</p>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleLogoSelect}
-                      className="hidden"
-                      id="logo-upload"
-                    />
-                    <label htmlFor="logo-upload">
-                      <Button variant="outline" size="sm" className="mt-3" asChild>
-                        <span>Browse Files</span>
-                      </Button>
-                    </label>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Gallery Images Upload */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-slate-700 mb-3">
-                Gallery Images
-              </label>
-              <div
-                onDragOver={(e) => { e.preventDefault(); setIsDraggingImages(true); }}
-                onDragLeave={() => setIsDraggingImages(false)}
-                onDrop={handleImagesDrop}
-                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-                  isDraggingImages 
-                    ? 'border-blue-500 bg-blue-50' 
-                    : 'border-slate-300 hover:border-slate-400'
-                }`}
-              >
-                {(formData.galleryImages && formData.galleryImages.length > 0) ? (
-                  <div className="grid grid-cols-4 gap-4">
-                    {formData.galleryImages.map((imageUrl, index) => (
-                      <div key={index} className="relative group">
-                        <img 
-                          src={imageUrl} 
-                          alt={`Image ${index + 1}`} 
-                          className="w-full h-24 object-cover rounded-lg"
-                        />
-                        <button
-                          onClick={() => removeImage(index)}
-                          className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                    <div className="flex items-center justify-center">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        onChange={handleImagesSelect}
-                        className="hidden"
-                        id="images-upload"
-                      />
-                      <label htmlFor="images-upload">
-                        <Button variant="outline" size="sm" asChild>
-                          <span>
-                            <Plus className="w-4 h-4 mr-2" />
-                            Add More
-                          </span>
-                        </Button>
-                      </label>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <Image className="w-12 h-12 text-slate-400 mx-auto mb-3" />
-                    <p className="text-sm text-slate-600 mb-2">
-                      Drag & drop images here, or click to browse
-                    </p>
-                    <p className="text-xs text-slate-500">Multiple images accepted (PNG, JPG)</p>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={handleImagesSelect}
-                      className="hidden"
-                      id="images-upload-initial"
-                    />
-                    <label htmlFor="images-upload-initial">
-                      <Button variant="outline" size="sm" className="mt-3" asChild>
-                        <span>Browse Files</span>
-                      </Button>
-                    </label>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Videos Upload */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-3">
-                Videos
-              </label>
-              <div
-                onDragOver={(e) => { e.preventDefault(); setIsDraggingVideos(true); }}
-                onDragLeave={() => setIsDraggingVideos(false)}
-                onDrop={handleVideosDrop}
-                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-                  isDraggingVideos 
-                    ? 'border-blue-500 bg-blue-50' 
-                    : 'border-slate-300 hover:border-slate-400'
-                }`}
-              >
-                {(formData.videoLinks && formData.videoLinks.length > 0) ? (
-                  <div className="space-y-3">
-                    {formData.videoLinks.map((videoUrl, index) => (
-                      <div key={index} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <VideoIcon className="w-5 h-5 text-purple-600" />
-                          <span className="text-sm font-medium text-slate-900">Video {index + 1}</span>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeVideo(index)}
-                          className="text-red-600 hover:text-red-700"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    ))}
-                    <input
-                      type="file"
-                      accept="video/*"
-                      multiple
-                      onChange={handleVideosSelect}
-                      className="hidden"
-                      id="videos-upload"
-                    />
-                    <label htmlFor="videos-upload">
-                      <Button variant="outline" size="sm" asChild>
-                        <span>
-                          <Plus className="w-4 h-4 mr-2" />
-                          Add More Videos
-                        </span>
-                      </Button>
-                    </label>
-                  </div>
-                ) : (
-                  <>
-                    <VideoIcon className="w-12 h-12 text-slate-400 mx-auto mb-3" />
-                    <p className="text-sm text-slate-600 mb-2">
-                      Drag & drop videos here, or click to browse
-                    </p>
-                    <p className="text-xs text-slate-500">MP4, MOV, AVI up to 100MB</p>
-                    <input
-                      type="file"
-                      accept="video/*"
-                      multiple
-                      onChange={handleVideosSelect}
-                      className="hidden"
-                      id="videos-upload-initial"
-                    />
-                    <label htmlFor="videos-upload-initial">
-                      <Button variant="outline" size="sm" className="mt-3" asChild>
-                        <span>Browse Files</span>
-                      </Button>
-                    </label>
-                  </>
-                )}
-              </div>
-            </div>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="about" className="space-y-4 mt-4">
-          <Card className="p-6">
-            <h4 className="font-semibold text-slate-900 mb-4">About & Description</h4>
-            <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Short Blurb (1-2 sentences)
+                  Online Ordering
                 </label>
                 <textarea
-                  value={formData.shortBlurb || ''}
-                  onChange={(e) => updateField('shortBlurb', e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  value={formData.onlineOrdering || ''}
+                  onChange={(e) => updateField('onlineOrdering', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
                   rows={2}
-                  placeholder="Affordable roll-off dumpsters for home and contractors."
+                  placeholder="ChowNow • DoorDash • Grubhub"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Full About (from /about page)
+                  Email
                 </label>
                 <textarea
-                  value={formData.fullAbout || ''}
-                  onChange={(e) => updateField('fullAbout', e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  rows={6}
-                  placeholder="Full about text automatically extracted from about page..."
+                  value={typeof formData.emails === 'string' ? formData.emails : (Array.isArray(formData.emails) ? formData.emails.join('\n') : '')}
+                  onChange={(e) => updateField('emails', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={2}
+                  placeholder="Not published on official site (newsletter signup only). Neutral fallback: use phone/ordering links."
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Mission Statement / Tagline
+                  Canonical Domain
                 </label>
                 <input
-                  type="text"
-                  value={formData.missionStatement || ''}
-                  onChange={(e) => updateField('missionStatement', e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  placeholder="Fast, Reliable, Affordable."
+                  type="url"
+                  value={formData.canonicalDomain || ''}
+                  onChange={(e) => updateField('canonicalDomain', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  placeholder="https://asoceanside.com/ (www/non-www resolved)"
                 />
               </div>
             </div>
           </Card>
         </TabsContent>
 
-        <TabsContent value="online" className="space-y-4 mt-4">
+        {/* PART 3 - Geolocation Data */}
+        <TabsContent value="part3" className="space-y-4 mt-4">
           <Card className="p-6">
-            <h4 className="font-semibold text-slate-900 mb-4">Social Profiles</h4>
-            <div className="grid grid-cols-2 gap-4">
+            <h4 className="font-semibold text-slate-900 mb-4">Part 3 – Geolocation Data</h4>
+            <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Facebook
+                  Latitude/Longitude
                 </label>
                 <input
-                  type="url"
-                  value={formData.socialProfiles?.facebook || ''}
-                  onChange={(e) => updateField('socialProfiles', { ...formData.socialProfiles, facebook: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  placeholder="https://facebook.com/company"
+                  type="text"
+                  value={formData.latitudeLongitude || ''}
+                  onChange={(e) => updateField('latitudeLongitude', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  placeholder="40.62844, −73.64153 (parcel centroid for 3382 Long Beach Rd)"
                 />
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Geo Source
+                </label>
+                <textarea
+                  value={formData.geoSource || ''}
+                  onChange={(e) => updateField('geoSource', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={2}
+                  placeholder="MapQuest geocoded address page for 3382 Long Beach Rd."
+                />
+              </div>
+            </div>
+          </Card>
+        </TabsContent>
+
+        {/* PART 4 - Service Area / Delivery Zone */}
+        <TabsContent value="part4" className="space-y-4 mt-4">
+          <Card className="p-6">
+            <h4 className="font-semibold text-slate-900 mb-4">Part 4 – Service Area / Delivery Zone</h4>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Local Focus
+                </label>
+                <textarea
+                  value={formData.localFocus || ''}
+                  onChange={(e) => updateField('localFocus', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={2}
+                  placeholder="Oceanside, NY + nearby South Shore Nassau towns."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Primary Nearby Towns (in-store/catering reach)
+                </label>
+                <textarea
+                  value={formData.primaryNearbyTowns || ''}
+                  onChange={(e) => updateField('primaryNearbyTowns', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={3}
+                  placeholder="Rockville Centre, Baldwin, Lynbrook, East Rockaway, Island Park, Long Beach. (Inferred from locality; confirm per order partners at checkout.)"
+                />
+              </div>
+            </div>
+          </Card>
+        </TabsContent>
+
+        {/* PART 5 - Business Hours & Availability */}
+        <TabsContent value="part5" className="space-y-4 mt-4">
+          <Card className="p-6">
+            <h4 className="font-semibold text-slate-900 mb-4">Part 5 – Business Hours & Availability</h4>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Store Hours
+                </label>
+                <textarea
+                  value={formData.businessHours || ''}
+                  onChange={(e) => updateField('businessHours', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={3}
+                  placeholder="Not explicitly published on official site. Third-party listings show daily opening around 8:00 AM; verify by phone before visiting. (Neutral fallback used.)"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Response Time
+                </label>
+                <textarea
+                  value={formData.responseTime || ''}
+                  onChange={(e) => updateField('responseTime', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={2}
+                  placeholder="Same-day for in-store orders; catering lead times vary by menu/season."
+                />
+              </div>
+            </div>
+          </Card>
+        </TabsContent>
+
+        {/* PART 6 - Services / Products Offered */}
+        <TabsContent value="part6" className="space-y-4 mt-4">
+          <Card className="p-6">
+            <h4 className="font-semibold text-slate-900 mb-4">Part 6 – Services / Products Offered</h4>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Services / Products Offered (Full Text)
+                </label>
+                <textarea
+                  value={formData.servicesOffered || ''}
+                  onChange={(e) => updateField('servicesOffered', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={20}
+                  placeholder="Italian Deli & Marketplace
+- Heroes, Sandwiches & Wraps — Cold cuts, Italian combos, chicken cutlet builds. Duration: 5–15 min typical. Notes: Custom builds available.
+- Hot Prepared Foods — Chicken parm/francaise, sausage & peppers, eggplant, pasta trays. Notes: Daily rotation.
+..."
+                />
+              </div>
+            </div>
+          </Card>
+        </TabsContent>
+
+        {/* PART 7 - Reviews & Reputation */}
+        <TabsContent value="part7" className="space-y-4 mt-4">
+          <Card className="p-6">
+            <h4 className="font-semibold text-slate-900 mb-4">Part 7 – Reviews & Reputation</h4>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  ⭐ Verified 5-Star Reviews (Total)
+                </label>
+                <input
+                  type="text"
+                  value={formData.verifiedFiveStarTotal || ''}
+                  onChange={(e) => updateField('verifiedFiveStarTotal', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  placeholder="N/A (platform 5-star breakdowns not exposed) — Accessed October 2025"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Google Reviews (Total)
+                </label>
+                <input
+                  type="text"
+                  value={formData.googleReviewsTotal || ''}
+                  onChange={(e) => updateField('googleReviewsTotal', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  placeholder="N/A (count not visible without JS; direct listing link provided)"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Review Links
+                </label>
+                <textarea
+                  value={formData.reviewLinks || ''}
+                  onChange={(e) => updateField('reviewLinks', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={3}
+                  placeholder="[Google Maps] (maps search for 'A&S Fine Foods Oceanside NY') | [Yelp] (...) | [Facebook] (...) | [TripAdvisor] (...) | [Ordering/Delivery] (...)"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Yelp Info
+                </label>
+                <textarea
+                  value={formData.yelpInfo || ''}
+                  onChange={(e) => updateField('yelpInfo', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={2}
+                  placeholder="Active listing with recent reviews; hours and phone match NAP."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Facebook Info
+                </label>
+                <textarea
+                  value={formData.facebookInfo || ''}
+                  onChange={(e) => updateField('facebookInfo', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={2}
+                  placeholder="Official page, >5K likes; branding matches store."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  TripAdvisor Info
+                </label>
+                <textarea
+                  value={formData.tripadvisorInfo || ''}
+                  onChange={(e) => updateField('tripadvisorInfo', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={2}
+                  placeholder="Take-out/high-end deli notes; aligns with marketplace model."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Direct Profiles
+                </label>
+                <textarea
+                  value={formData.directProfiles || ''}
+                  onChange={(e) => updateField('directProfiles', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={5}
+                  placeholder="• Google Maps (search entry): https://www.google.com/maps/search/?api=1&query=...
+- Yelp: https://www.yelp.com/biz/...
+- Facebook: https://www.facebook.com/...
+- TripAdvisor: https://www.tripadvisor.com/..."
+                />
+              </div>
+            </div>
+          </Card>
+        </TabsContent>
+
+        {/* PART 8 - Key Metrics & Differentiators */}
+        <TabsContent value="part8" className="space-y-4 mt-4">
+          <Card className="p-6">
+            <h4 className="font-semibold text-slate-900 mb-4">Part 8 – Key Metrics & Differentiators</h4>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Quick Facts
+                </label>
+                <textarea
+                  value={formData.quickFacts || ''}
+                  onChange={(e) => updateField('quickFacts', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={4}
+                  placeholder="• Serving Oceanside community 35+ years (est. 1985)
+- Family-owned; multi-generation Nicolo family leadership
+- Full catering + seasonal holiday menus; online ordering via partners"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Primary SEO Keywords (9)
+                </label>
+                <textarea
+                  value={formData.primarySeoKeywords || ''}
+                  onChange={(e) => updateField('primarySeoKeywords', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={4}
+                  placeholder="italian deli oceanside ny • italian catering oceanside • heroes and sandwiches oceanside • prepared italian foods long island • mozzarella and salumi oceanside • holiday catering long island • italian marketplace oceanside • pasta trays oceanside ny • antipasto platters oceanside"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Verified/Fallback Badges (best-fit)
+                </label>
+                <textarea
+                  value={formData.verifiedFallbackBadges || ''}
+                  onChange={(e) => updateField('verifiedFallbackBadges', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={6}
+                  placeholder="✅ Family-Owned Since 1985
+✅ Local Favorite (South Shore Nassau)
+✅ Same-Day Service Available (in-store orders)
+✅ Friendly Customer Service
+✅ High Customer Satisfaction (consistent positive third-party reviews)"
+                />
+              </div>
+            </div>
+          </Card>
+        </TabsContent>
+
+        {/* PART 9 - Social Media & Media Links */}
+        <TabsContent value="part9" className="space-y-4 mt-4">
+          <Card className="p-6">
+            <h4 className="font-semibold text-slate-900 mb-4">Part 9 – Social Media & Media Links</h4>
+            <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   Instagram
                 </label>
                 <input
                   type="url"
-                  value={formData.socialProfiles?.instagram || ''}
-                  onChange={(e) => updateField('socialProfiles', { ...formData.socialProfiles, instagram: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  placeholder="https://instagram.com/company"
+                  value={formData.instagramUrl || ''}
+                  onChange={(e) => updateField('instagramUrl', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  placeholder="https://www.instagram.com/asfinefoodoceanside/"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  LinkedIn
+                  Facebook
                 </label>
                 <input
                   type="url"
-                  value={formData.socialProfiles?.linkedin || ''}
-                  onChange={(e) => updateField('socialProfiles', { ...formData.socialProfiles, linkedin: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  placeholder="https://linkedin.com/company/..."
+                  value={formData.facebookUrl || ''}
+                  onChange={(e) => updateField('facebookUrl', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  placeholder="https://www.facebook.com/asfinefoodsoceanside/"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Twitter/X
+                  Gallery (official)
                 </label>
                 <input
                   type="url"
-                  value={formData.socialProfiles?.twitter || ''}
-                  onChange={(e) => updateField('socialProfiles', { ...formData.socialProfiles, twitter: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  placeholder="https://x.com/company"
+                  value={formData.galleryUrl || ''}
+                  onChange={(e) => updateField('galleryUrl', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  placeholder="https://asoceanside.com/gallery/"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  YouTube
+                  Recipes
                 </label>
                 <input
                   type="url"
-                  value={formData.socialProfiles?.youtube || ''}
-                  onChange={(e) => updateField('socialProfiles', { ...formData.socialProfiles, youtube: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  placeholder="https://youtube.com/@company"
+                  value={formData.recipesUrl || ''}
+                  onChange={(e) => updateField('recipesUrl', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  placeholder="https://asoceanside.com/recipes/"
                 />
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  TikTok
-                </label>
-                <input
-                  type="url"
-                  value={formData.socialProfiles?.tiktok || ''}
-                  onChange={(e) => updateField('socialProfiles', { ...formData.socialProfiles, tiktok: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  placeholder="https://tiktok.com/@company"
-                />
-              </div>
-            </div>
-          </Card>
-
-          <Card className="p-6">
-            <h4 className="font-semibold text-slate-900 mb-4">Directory Verification</h4>
-            <div className="space-y-3">
-              <label className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={formData.directories?.googleBusinessFound || false}
-                  onChange={(e) => updateField('directories', { ...formData.directories, googleBusinessFound: e.target.checked })}
-                  className="w-4 h-4"
-                />
-                <span className="text-sm text-slate-700">Google Business Profile Found</span>
-              </label>
-
-              <label className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={formData.directories?.yelpFound || false}
-                  onChange={(e) => updateField('directories', { ...formData.directories, yelpFound: e.target.checked })}
-                  className="w-4 h-4"
-                />
-                <span className="text-sm text-slate-700">Yelp Listing Found</span>
-              </label>
-
-              <label className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={formData.directories?.bbbFound || false}
-                  onChange={(e) => updateField('directories', { ...formData.directories, bbbFound: e.target.checked })}
-                  className="w-4 h-4"
-                />
-                <span className="text-sm text-slate-700">BBB Listing Found</span>
-              </label>
-
-              <label className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={formData.directories?.linkedinFound || false}
-                  onChange={(e) => updateField('directories', { ...formData.directories, linkedinFound: e.target.checked })}
-                  className="w-4 h-4"
-                />
-                <span className="text-sm text-slate-700">LinkedIn Company Page Found</span>
-              </label>
             </div>
           </Card>
         </TabsContent>
 
-        <TabsContent value="seo" className="space-y-4 mt-4">
+        {/* PART 10 - Visual Assets / Gallery */}
+        <TabsContent value="part10" className="space-y-4 mt-4">
           <Card className="p-6">
-            <h4 className="font-semibold text-slate-900 mb-4">SEO & Meta Data</h4>
+            <h4 className="font-semibold text-slate-900 mb-4">Part 10 – Visual Assets / Gallery</h4>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Meta Title
+                  Visual Assets Description
+                </label>
+                <textarea
+                  value={formData.visualAssets || ''}
+                  onChange={(e) => updateField('visualAssets', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={3}
+                  placeholder="Representative product/store imagery available on the Gallery page (prepared foods, butcher case, pantry shelves) for CMS use; ensure alt-text includes dish/item name and 'A&S Oceanside.'"
+                />
+              </div>
+            </div>
+          </Card>
+        </TabsContent>
+
+        {/* PART 11 - FAQs */}
+        <TabsContent value="part11" className="space-y-4 mt-4">
+          <Card className="p-6">
+            <h4 className="font-semibold text-slate-900 mb-4">Part 11 – FAQs (SEO-optimized by Eyes AI)</h4>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  FAQs (Full Text - paste all 12 questions and answers)
+                </label>
+                <textarea
+                  value={formData.faqs || ''}
+                  onChange={(e) => updateField('faqs', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={25}
+                  placeholder="1. Do you offer catering for parties and holidays? Yes—full trays, party packages, and seasonal holiday menus are available; order ahead.
+2. How do I place an online order for pickup or delivery? Use ChowNow (pickup) or third-party delivery partners like DoorDash/Grubhub.
+..."
+                />
+              </div>
+            </div>
+          </Card>
+        </TabsContent>
+
+        {/* SEO SUMMARY */}
+        <TabsContent value="seo" className="space-y-4 mt-4">
+          <Card className="p-6">
+            <h4 className="font-semibold text-slate-900 mb-4">SEO Summary (90+ Ready)</h4>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Change Log & Confidence Gaps
+                </label>
+                <textarea
+                  value={formData.changeLogConfidenceGaps || ''}
+                  onChange={(e) => updateField('changeLogConfidenceGaps', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={8}
+                  placeholder="• Name/Branding: Canonical trading name appears as 'A&S Oceanside / A&S Fine Foods Oceanside.' Alias recorded for 'A & S Deli.'
+- Email: No explicit store email on official site (newsletter only). Neutral fallback retained.
+..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Comparative Value Table
+                </label>
+                <textarea
+                  value={formData.comparativeValueTable || ''}
+                  onChange={(e) => updateField('comparativeValueTable', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={8}
+                  placeholder="Feature | A&S Oceanside | Typical Competitor
+Years serving area | 35+ years (since 1985) | 5–15 years
+Ownership | Family-owned (multi-generation) | Varies
+..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Meta Title (≤60)
                 </label>
                 <input
                   type="text"
                   value={formData.metaTitle || ''}
                   onChange={(e) => updateField('metaTitle', e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  placeholder="Page title from website"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  placeholder="A&S Oceanside – Italian Deli, Catering & Marketplace in Oceanside, NY"
+                  maxLength={60}
                 />
+                <p className="text-xs text-slate-500 mt-1">{(formData.metaTitle || '').length}/60 characters</p>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Meta Description
+                  Meta Description (≤160)
                 </label>
                 <textarea
                   value={formData.metaDescription || ''}
                   onChange={(e) => updateField('metaDescription', e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={3}
+                  placeholder="Family-owned since 1985. Heroes, prepared Italian foods, butcher & cheeses, full catering, and seasonal holiday menus. Order online or visit A&S in Oceanside."
+                  maxLength={160}
+                />
+                <p className="text-xs text-slate-500 mt-1">{(formData.metaDescription || '').length}/160 characters</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  JSON-LD Schema (LocalBusiness + Organization + Offerings + FAQPage)
+                </label>
+                <textarea
+                  value={formData.jsonLdSchema || ''}
+                  onChange={(e) => updateField('jsonLdSchema', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={40}
+                  placeholder='<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"LocalBusiness",
+  ...
+}
+</script>'
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Internal Links (≥3)
+                </label>
+                <textarea
+                  value={formData.internalLinks || ''}
+                  onChange={(e) => updateField('internalLinks', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
                   rows={2}
-                  placeholder="Meta description from website"
+                  placeholder="Menus • Catering • Holiday Menus • Gallery • Recipes"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  H1 Tag
+                  External Citations (≥2)
                 </label>
-                <input
-                  type="text"
-                  value={formData.h1Tag || ''}
-                  onChange={(e) => updateField('h1Tag', e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  placeholder="Main H1 heading"
+                <textarea
+                  value={formData.externalCitations || ''}
+                  onChange={(e) => updateField('externalCitations', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  rows={2}
+                  placeholder="Yelp • TripAdvisor • Facebook (official)"
                 />
               </div>
-            </div>
-          </Card>
 
-          <Card className="p-6">
-            <h4 className="font-semibold text-slate-900 mb-4">Schema / Structured Data</h4>
-            <div className="space-y-4">
-              <label className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={formData.schemaDetected || false}
-                  onChange={(e) => updateField('schemaDetected', e.target.checked)}
-                  className="w-4 h-4"
-                />
-                <span className="text-sm text-slate-700">Schema Markup Detected</span>
-              </label>
-
-              {formData.schemaDetected && (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Schema Type
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.schemaType || ''}
-                    onChange={(e) => updateField('schemaType', e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                    placeholder="LocalBusiness, Organization, etc."
-                  />
-                </div>
-              )}
-            </div>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="technical" className="space-y-4 mt-4">
-          <Card className="p-6">
-            <h4 className="font-semibold text-slate-900 mb-4">Technical Snapshot</h4>
-            <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  CMS / Platform
+                  Schema Elements Included
                 </label>
                 <input
                   type="text"
-                  value={formData.platform || ''}
-                  onChange={(e) => updateField('platform', e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  placeholder="WordPress, Webflow, Wix"
+                  value={formData.schemaElementsIncluded || ''}
+                  onChange={(e) => updateField('schemaElementsIncluded', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  placeholder="LocalBusiness, Organization, GeoCoordinates, Offer, Menu, FAQPage, sameAs (social), areaServed, slogan"
                 />
               </div>
 
-              <div className="space-y-3">
-                <label className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={formData.sslEnabled || false}
-                    onChange={(e) => updateField('sslEnabled', e.target.checked)}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm text-slate-700">SSL Enabled (HTTPS)</span>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  AI Discovery Tier
                 </label>
+                <input
+                  type="text"
+                  value={formData.aiDiscoveryTier || ''}
+                  onChange={(e) => updateField('aiDiscoveryTier', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  placeholder="Verified"
+                />
+              </div>
 
-                <label className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={formData.mobileFriendly || false}
-                    onChange={(e) => updateField('mobileFriendly', e.target.checked)}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm text-slate-700">Mobile-Friendly</span>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Last Updated Date
                 </label>
+                <input
+                  type="text"
+                  value={formData.lastUpdatedDate || ''}
+                  onChange={(e) => updateField('lastUpdatedDate', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  placeholder="10/14/2025"
+                />
               </div>
             </div>
-          </Card>
-
-          <Card className="p-6">
-            <h4 className="font-semibold text-slate-900 mb-4">VA Notes</h4>
-            <textarea
-              value={formData.notes || ''}
-              onChange={(e) => updateField('notes', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-              rows={6}
-              placeholder="Any additional notes, observations, or issues encountered during intake..."
-            />
           </Card>
         </TabsContent>
       </Tabs>
 
       <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
         <div className="text-sm text-slate-600">
-          {isEnriching || isFilling
-            ? '🔍 Processing...' 
-            : 'Auto-enrich → Fill missing → Review → Mark complete'}
+          Paste document using AI or manually edit fields → Save Draft → Mark Complete
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" onClick={saveDraft} className="gap-2" disabled={isEnriching || isFilling}>
+          <Button variant="outline" onClick={saveDraft} className="gap-2">
             <Save className="w-4 h-4" />
             Save Draft
           </Button>
-          <Button onClick={markComplete} className="gap-2 bg-green-600 hover:bg-green-700" disabled={isEnriching || isFilling}>
+          <Button onClick={markComplete} className="gap-2 bg-green-600 hover:bg-green-700">
             <CheckCircle className="w-4 h-4" />
             Mark Complete
           </Button>

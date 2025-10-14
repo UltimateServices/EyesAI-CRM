@@ -1,46 +1,16 @@
-export type CompanyStatus = 'NEW' | 'ACTIVE' | 'CHURNED';
-export type CompanyPlan = 'DISCOVER' | 'VERIFIED';
-
 export interface Company {
   id: string;
   name: string;
   website: string;
   logoUrl?: string;
-  coverUrl?: string;
   contactEmail?: string;
   phone?: string;
   address?: string;
-  status: CompanyStatus;
-  plan: CompanyPlan;
+  status: 'NEW' | 'ACTIVE' | 'CHURNED';
+  plan: 'DISCOVER' | 'VERIFIED';
   assignedVaName?: string;
   createdAt: string;
-  updatedAt: string;
-}
-
-export type TaskStatus = 'todo' | 'in_progress' | 'done';
-export type TaskPriority = 'low' | 'medium' | 'high';
-
-export interface Task {
-  id: string;
-  companyId: string;
-  title: string;
-  description?: string;
-  status: TaskStatus;
-  priority: TaskPriority;
-  assignedTo?: string;
-  dueAt?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface VerificationLogEntry {
-  id: string;
-  timestamp: string;
-  field: string;
-  oldValue: string | null;
-  newValue: string;
-  source: string;
-  changeType: 'added' | 'updated' | 'verified' | 'removed';
+  lastUpdated: string;
 }
 
 export interface Intake {
@@ -48,39 +18,93 @@ export interface Intake {
   companyId: string;
   status: 'draft' | 'complete';
   
-  // Company Identity
+  // Part 1 - Basic Business Information
+  legalCanonicalName?: string;
+  alsoKnownAs?: string;
+  industryCategoryBadges?: string;
+  yearEstablished?: string;
+  ownershipHeritage?: string;
+  businessStatus?: string;
+  taglineSlogan?: string;
+  shortDescription?: string;
+  verificationTier?: string;
+  
+  // Part 2 - Contact Information
   officialName?: string;
+  website?: string;
+  mainPhone?: string;
+  physicalAddress?: string;
+  onlineOrdering?: string;
+  emails?: string[];
+  canonicalDomain?: string;
+  
+  // Part 3 - Geolocation Data
+  latitudeLongitude?: string;
+  geoSource?: string;
+  
+  // Part 4 - Service Area / Delivery Zone
+  localFocus?: string;
+  primaryNearbyTowns?: string;
+  
+  // Part 5 - Business Hours & Availability
+  businessHours?: string;
+  responseTime?: string;
+  
+  // Part 6 - Services / Products Offered
+  servicesOffered?: string;
+  
+  // Part 7 - Reviews & Reputation
+  verifiedFiveStarTotal?: string;
+  googleReviewsTotal?: string;
+  reviewLinks?: string;
+  yelpInfo?: string;
+  facebookInfo?: string;
+  tripadvisorInfo?: string;
+  directProfiles?: string;
+  
+  // Part 8 - Key Metrics & Differentiators
+  quickFacts?: string;
+  primarySeoKeywords?: string;
+  verifiedFallbackBadges?: string;
+  
+  // Part 9 - Social Media & Media Links
+  socialMediaLinks?: string;
+  instagramUrl?: string;
+  facebookUrl?: string;
+  galleryUrl?: string;
+  recipesUrl?: string;
+  
+  // Part 10 - Visual Assets / Gallery
+  visualAssets?: string;
+  logoUrl?: string;
+  galleryImages?: string[];
+  
+  // Part 11 - FAQs
+  faqs?: string;
+  
+  // Additional Sections
+  changeLogConfidenceGaps?: string;
+  seoSummary?: string;
+  comparativeValueTable?: string;
+  metaTitle?: string;
+  metaDescription?: string;
+  jsonLdSchema?: string;
+  internalLinks?: string;
+  externalCitations?: string;
+  schemaElementsIncluded?: string;
+  aiDiscoveryTier?: string;
+  lastUpdatedDate?: string;
+  
+  // Legacy fields
   category?: string;
   founded?: string;
-  businessHours?: string;
   licenses?: string;
-  
-  // Contact & Location
-  mainPhone?: string;
-  emails?: string[];
-  physicalAddress?: string;
   serviceAreas?: string[];
-  mapLink?: string;
-  
-  // Services
-  services?: Array<{
-    name: string;
-    description: string;
-    price?: string;
-  }>;
-  
-  // Media
-  logoUrl?: string;
-  heroImageUrl?: string;
-  galleryImages?: string[];
-  videoLinks?: string[];
-  
-  // About
   shortBlurb?: string;
   fullAbout?: string;
   missionStatement?: string;
-  
-  // Online Presence
+  videoLinks?: string[];
+  services?: Array<{ name: string; description: string; price?: string }>;
   socialProfiles?: {
     facebook?: string;
     instagram?: string;
@@ -89,38 +113,49 @@ export interface Intake {
     youtube?: string;
     tiktok?: string;
   };
-  
   directories?: {
     googleBusinessFound?: boolean;
     yelpFound?: boolean;
     bbbFound?: boolean;
     linkedinFound?: boolean;
   };
-  
-  // SEO & Meta
-  metaTitle?: string;
-  metaDescription?: string;
+  metaKeywords?: string;
   h1Tag?: string;
   schemaDetected?: boolean;
   schemaType?: string;
-  
-  // Technical
   platform?: string;
   sslEnabled?: boolean;
   mobileFriendly?: boolean;
-  
-  // VA Notes
+  mapLink?: string;
+  heroImageUrl?: string;
   notes?: string;
-  
-  // Completion
-  completedAt?: string;
-  completedBy?: string;
-  
-  // Timestamps
+  verificationLog?: VerificationLogEntry[];
+  lastVerified?: string;
   createdAt: string;
   updatedAt: string;
-  
-  // Verification
-  lastVerified?: string;
-  verificationLog?: VerificationLogEntry[];
+  completedAt?: string;
+  completedBy?: string;
+}
+
+export interface VerificationLogEntry {
+  id: string;
+  timestamp: string;
+  field: string;
+  oldValue: string;
+  newValue: string;
+  source: string;
+  changeType: 'verified' | 'updated' | 'added';
+}
+
+export interface Task {
+  id: string;
+  companyId: string;
+  title: string;
+  description: string;
+  status: 'todo' | 'in_progress' | 'done';
+  priority: 'low' | 'medium' | 'high';
+  assignedTo?: string;
+  dueDate?: string;
+  createdAt: string;
+  updatedAt: string;
 }
