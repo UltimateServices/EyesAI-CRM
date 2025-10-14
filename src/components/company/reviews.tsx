@@ -6,7 +6,7 @@ import { Company, Review } from '@/lib/types';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Star, Plus, X, ExternalLink, Filter, Calendar, Download, Loader2 } from 'lucide-react';
+import { Star, Plus, X, ExternalLink, Filter, Calendar, Download, Loader2, AlertCircle } from 'lucide-react';
 
 interface ReviewsProps {
   company: Company;
@@ -78,7 +78,7 @@ export function Reviews({ company }: ReviewsProps) {
     });
     
     setShowAddForm(false);
-    alert('Review added successfully!');
+    alert('✅ Review added successfully!');
   };
 
   const handleDeleteReview = (reviewId: string) => {
@@ -100,7 +100,7 @@ export function Reviews({ company }: ReviewsProps) {
         updatedAt: new Date().toISOString(),
       });
       
-      alert('Review deleted!');
+      alert('✅ Review deleted!');
     }
   };
 
@@ -110,6 +110,7 @@ export function Reviews({ company }: ReviewsProps) {
     const fieldsToCheck = [
       intake?.directProfiles,
       intake?.reviewLinks,
+      intake?.googleReviewsTotal,
       intake?.mapLink,
       intake?.website,
       intake?.socialMediaLinks,
@@ -124,10 +125,10 @@ export function Reviews({ company }: ReviewsProps) {
       const urlMatches = field.match(/https?:\/\/[^\s,)]+/gi);
       if (urlMatches) {
         const googleUrls = urlMatches.filter(url => 
-          url.includes('google.com/maps') || 
-          url.includes('maps.google.com') ||
-          url.includes('goo.gl/maps') ||
-          url.includes('maps.app.goo.gl')
+          url.toLowerCase().includes('google') || 
+          url.includes('goo.gl') ||
+          url.includes('g.page') ||
+          url.includes('maps.app')
         );
         googleMapsUrls.push(...googleUrls);
       }
@@ -135,19 +136,14 @@ export function Reviews({ company }: ReviewsProps) {
 
     const uniqueUrls = Array.from(new Set(googleMapsUrls));
 
-    if (uniqueUrls.length === 0) {
-      alert('❌ No Google Maps URLs found.\n\nPlease add Google Maps links in the intake form:\n• Part 2: Physical Address/Map Link\n• Part 7: Direct Profiles or Review Links');
-      return;
-    }
-
-    const locationText = uniqueUrls.length === 1 ? '1 location' : `${uniqueUrls.length} locations`;
-
-    const confirmMsg = `Import 5-star reviews from Google?\n\n` +
-      `Found: ${locationText}\n\n` +
-      `This will:\n` +
-      `✓ Fetch all 5-star reviews\n` +
-      `✓ Import from all locations\n` +
-      `✓ Skip duplicates automatically\n\n` +
+    const confirmMsg = `🔍 Import Reviews from Google?\n\n` +
+      `This will use multiple strategies to find reviews:\n\n` +
+      `✓ ${uniqueUrls.length > 0 ? `Process ${uniqueUrls.length} Google URLs` : 'Search by business info'}\n` +
+      `✓ Search by phone number\n` +
+      `✓ Search by address\n` +
+      `✓ Search by business name\n` +
+      `✓ Nearby location search\n\n` +
+      `The system will try every method to find your reviews.\n\n` +
       `Continue?`;
 
     if (!confirm(confirmMsg)) {
@@ -158,7 +154,7 @@ export function Reviews({ company }: ReviewsProps) {
     setImportError('');
 
     try {
-      console.log('Starting import with URLs:', uniqueUrls);
+      console.log('🚀 Starting comprehensive import...');
 
       const response = await fetch('/api/import-google-reviews', {
         method: 'POST',
@@ -167,6 +163,7 @@ export function Reviews({ company }: ReviewsProps) {
           googleMapsUrls: uniqueUrls,
           companyName: company.name,
           companyAddress: company.address || intake?.physicalAddress,
+          companyPhone: company.phone || intake?.mainPhone,
         }),
       });
 
@@ -217,26 +214,30 @@ export function Reviews({ company }: ReviewsProps) {
         updatedAt: new Date().toISOString(),
       });
 
-      let summaryText = `✅ Successfully imported ${newReviews.length} new 5-star reviews!\n\n`;
-      summaryText += `📊 Summary:\n`;
-      summaryText += `• Locations Processed: ${totalLocations}\n`;
-      summaryText += `• Total Reviews Found: ${totalAllReviews}\n`;
-      summaryText += `• 5-Star Reviews: ${totalFiveStarReviews}\n`;
-      summaryText += `• New Reviews Added: ${newReviews.length}\n`;
-      summaryText += `• Duplicates Skipped: ${totalFiveStarReviews - newReviews.length}\n\n`;
+      let summaryText = `🎉 Successfully imported ${newReviews.length} new 5-star reviews!\n\n`;
+      summaryText += `📊 Import Summary:\n`;
+      summaryText += `━━━━━━━━━━━━━━━━━━━━\n`;
+      summaryText += `✓ Locations Found: ${totalLocations}\n`;
+      summaryText += `✓ Total Reviews: ${totalAllReviews}\n`;
+      summaryText += `✓ 5-Star Reviews: ${totalFiveStarReviews}\n`;
+      summaryText += `✓ New Added: ${newReviews.length}\n`;
+      summaryText += `✓ Duplicates Skipped: ${totalFiveStarReviews - newReviews.length}\n\n`;
       summaryText += `📍 Locations:\n`;
+      summaryText += `━━━━━━━━━━━━━━━━━━━━\n`;
       
       locations.forEach((loc: any, index: number) => {
         summaryText += `\n${index + 1}. ${loc.locationName}\n`;
-        summaryText += `   ${loc.locationAddress}\n`;
-        summaryText += `   ⭐ ${loc.overallRating} rating • ${loc.fiveStarReviews.length} 5-star reviews\n`;
+        summaryText += `   📍 ${loc.locationAddress}\n`;
+        summaryText += `   ⭐ ${loc.overallRating} rating\n`;
+        summaryText += `   💬 ${loc.fiveStarReviews.length} 5-star reviews imported\n`;
+        if (loc.phone) summaryText += `   📞 ${loc.phone}\n`;
       });
 
       alert(summaryText);
     } catch (error: any) {
-      console.error('Import error:', error);
+      console.error('❌ Import error:', error);
       setImportError(error.message);
-      alert('❌ Failed to import reviews:\n\n' + error.message);
+      alert('❌ Import Failed\n\n' + error.message);
     } finally {
       setIsImporting(false);
     }
@@ -298,7 +299,13 @@ export function Reviews({ company }: ReviewsProps) {
 
       {importError ? (
         <Card className="p-4 bg-red-50 border-red-200">
-          <p className="text-sm text-red-700 whitespace-pre-wrap">{importError}</p>
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-red-900 mb-1">Import Failed</p>
+              <p className="text-sm text-red-700 whitespace-pre-wrap">{importError}</p>
+            </div>
+          </div>
         </Card>
       ) : null}
 
@@ -375,7 +382,7 @@ export function Reviews({ company }: ReviewsProps) {
       <div className="space-y-4">
         {filteredReviews.length > 0 ? (
           filteredReviews.map((review) => (
-            <Card key={review.id} className="p-6">
+            <Card key={review.id} className="p-6 hover:shadow-lg transition-shadow">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold text-lg">
@@ -386,7 +393,7 @@ export function Reviews({ company }: ReviewsProps) {
                       <h4 className="font-semibold text-slate-900">{review.reviewerName}</h4>
                       <Badge variant="secondary" className="text-xs">{review.platform}</Badge>
                       {review.source === 'intake' ? (
-                        <Badge variant="secondary" className="text-xs bg-green-100 text-green-700">Imported</Badge>
+                        <Badge variant="secondary" className="text-xs bg-green-100 text-green-700">Auto-Imported</Badge>
                       ) : null}
                     </div>
                     <div className="flex items-center gap-2">
@@ -405,18 +412,18 @@ export function Reviews({ company }: ReviewsProps) {
                 </div>
                 <div className="flex items-center gap-2">
                   {review.reviewUrl ? (
-                    <a href={review.reviewUrl} target="_blank" rel="noopener noreferrer" className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg">
+                    <a href={review.reviewUrl} target="_blank" rel="noopener noreferrer" className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
                       <ExternalLink className="w-4 h-4" />
                     </a>
                   ) : null}
                   {review.source === 'manual' ? (
-                    <button type="button" onClick={() => handleDeleteReview(review.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg">
+                    <button type="button" onClick={() => handleDeleteReview(review.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                       <X className="w-4 h-4" />
                     </button>
                   ) : null}
                 </div>
               </div>
-              <p className="text-slate-700">{review.reviewText}</p>
+              <p className="text-slate-700 leading-relaxed">{review.reviewText}</p>
             </Card>
           ))
         ) : (
@@ -425,30 +432,52 @@ export function Reviews({ company }: ReviewsProps) {
             <h3 className="text-lg font-semibold text-slate-900 mb-2">
               {filterFiveStarOnly ? 'No 5-Star Reviews Yet' : 'No Reviews Yet'}
             </h3>
-            <p className="text-slate-600 mb-4">Import from Google or add reviews manually</p>
+            <p className="text-slate-600 mb-4">Import reviews automatically or add them manually</p>
             <div className="flex gap-2 justify-center">
               <Button onClick={handleImportGoogleReviews} variant="outline" disabled={isImporting}>
                 <Download className="w-4 h-4 mr-2" />
-                Import from Google
+                Smart Import
               </Button>
               <Button onClick={() => setShowAddForm(true)}>
                 <Plus className="w-4 h-4 mr-2" />
-                Add Review
+                Add Manually
               </Button>
             </div>
           </Card>
         )}
       </div>
 
-      <Card className="p-6 bg-blue-50 border-blue-200">
-        <h4 className="font-semibold text-slate-900 mb-3">💡 Review Import Tips</h4>
-        <ul className="text-sm text-slate-700 space-y-2">
-          <li>• <strong>Automatic Detection:</strong> System scans all intake fields for Google Maps URLs</li>
-          <li>• <strong>Multi-Location:</strong> Imports reviews from all locations automatically</li>
-          <li>• <strong>5-Star Only:</strong> Only fetches 5-star reviews for marketing use</li>
-          <li>• <strong>Smart Deduplication:</strong> Skips reviews already in the system</li>
-          <li>• <strong>Multiple Formats:</strong> Handles various Google Maps URL formats</li>
-        </ul>
+      <Card className="p-6 bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
+        <h4 className="font-semibold text-slate-900 mb-3">🚀 Smart Import Technology</h4>
+        <p className="text-sm text-slate-700 mb-3">
+          Our system uses 5 advanced strategies to find your reviews:
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-slate-700">
+          <div className="flex items-start gap-2">
+            <span className="text-blue-600 font-bold">1.</span>
+            <span><strong>URL Analysis:</strong> Handles all Google Maps URL formats</span>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-blue-600 font-bold">2.</span>
+            <span><strong>Phone Search:</strong> Finds listings by phone number</span>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-blue-600 font-bold">3.</span>
+            <span><strong>Address Match:</strong> Locates by business address</span>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-blue-600 font-bold">4.</span>
+            <span><strong>Name Search:</strong> Discovers by business name</span>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-blue-600 font-bold">5.</span>
+            <span><strong>Nearby Scan:</strong> Checks nearby locations</span>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-green-600 font-bold">✓</span>
+            <span><strong>Auto-Dedupe:</strong> Skips duplicate reviews</span>
+          </div>
+        </div>
       </Card>
     </div>
   );
