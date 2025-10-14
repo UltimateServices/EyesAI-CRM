@@ -149,13 +149,17 @@ export const useStore = create<AppState>()(
 
       saveIntake: (intake) =>
         set((state) => {
+          console.log('saveIntake called with:', intake);
           const existingIndex = state.intakes.findIndex((i) => i.id === intake.id);
           if (existingIndex >= 0) {
             const updated = [...state.intakes];
             updated[existingIndex] = { ...intake, updatedAt: new Date().toISOString() };
+            console.log('Updated existing intake, new intakes array:', updated);
             return { intakes: updated };
           }
-          return { intakes: [...state.intakes, intake] };
+          const newIntakes = [...state.intakes, intake];
+          console.log('Added new intake, new intakes array:', newIntakes);
+          return { intakes: newIntakes };
         }),
 
       getIntakeByCompanyId: (companyId) => {
@@ -208,18 +212,19 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'eyesai-crm-storage',
-      storage: createJSONStorage(() => {
-        // Only use localStorage on client side
-        if (typeof window !== 'undefined') {
-          return localStorage;
-        }
-        // Return dummy storage for SSR
-        return {
-          getItem: () => null,
-          setItem: () => {},
-          removeItem: () => {},
-        };
+      storage: createJSONStorage(() => localStorage),
+      skipHydration: false,
+      partialize: (state) => ({
+        companies: state.companies,
+        tasks: state.tasks,
+        intakes: state.intakes,
       }),
     }
   )
 );
+
+// Force rehydration on client side
+if (typeof window !== 'undefined') {
+  useStore.persist.rehydrate();
+  console.log('Zustand store rehydrated on client');
+}
