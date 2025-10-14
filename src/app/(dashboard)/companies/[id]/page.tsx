@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CompanyOverview } from '@/components/company/company-overview';
 import { IntakeForm } from '@/components/company/intake-form';
 import MediaGallery from '@/components/company/media-gallery';
+import Reviews from '@/components/company/reviews';
 import { 
   ArrowLeft, 
   Building2, 
@@ -166,6 +167,7 @@ export default function CompanyDetailPage() {
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="intake">Intake</TabsTrigger>
           <TabsTrigger value="media">Media</TabsTrigger>
+          <TabsTrigger value="reviews">Reviews</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-6">
@@ -178,6 +180,10 @@ export default function CompanyDetailPage() {
 
         <TabsContent value="media" className="mt-6">
           <MediaGallery company={company} />
+        </TabsContent>
+
+        <TabsContent value="reviews" className="mt-6">
+          <Reviews company={company} />
         </TabsContent>
       </Tabs>
     </div>
