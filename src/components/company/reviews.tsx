@@ -15,7 +15,6 @@ interface ReviewsProps {
 export function Reviews({ company }: ReviewsProps) {
   const getIntakeByCompanyId = useStore((state) => state.getIntakeByCompanyId);
   const saveIntake = useStore((state) => state.saveIntake);
-  const updateCompany = useStore((state) => state.updateCompany);
   const intake = getIntakeByCompanyId(company.id);
   
   // Read directly from intake - no local state copy!
@@ -194,6 +193,7 @@ export function Reviews({ company }: ReviewsProps) {
                   const updatedReviews = [...reviews, ...newReviews];
                   console.log('Final updated reviews array:', updatedReviews);
 
+                  // Get or create intake
                   const intakeData = intake || {
                     id: 'intake-' + company.id,
                     companyId: company.id,
@@ -202,27 +202,33 @@ export function Reviews({ company }: ReviewsProps) {
                     updatedAt: new Date().toISOString(),
                   };
 
+                  console.log('Saving to intake with reviews:', updatedReviews);
+
+                  // Save to intake
                   saveIntake({
                     ...intakeData,
                     reviews: updatedReviews,
-                    googleMapsLink1: data.foundUrls?.google || intake?.googleMapsLink1,
-                    yelpUrl: data.foundUrls?.yelp || intake?.yelpUrl,
-                    facebookUrl: data.foundUrls?.facebook || intake?.facebookUrl,
+                    googleMapsLink1: data.foundUrls?.google || intakeData.googleMapsLink1,
+                    yelpUrl: data.foundUrls?.yelp || intakeData.yelpUrl,
+                    facebookUrl: data.foundUrls?.facebook || intakeData.facebookUrl,
                     updatedAt: new Date().toISOString(),
-                  });
-
-                  // Also update company
-                  updateCompany(company.id, {
-                    reviews: updatedReviews,
                   });
 
                   console.log('Saved to Zustand store');
 
-                  alert(`🎉 Successfully imported ${newReviews.length} new reviews!\n\n` +
-                        `✓ Google: ${data.reviews.filter((r: any) => r.platform === 'google').length}\n` +
-                        `✓ Yelp: ${data.reviews.filter((r: any) => r.platform === 'yelp').length}\n` +
-                        `✓ Facebook: ${data.reviews.filter((r: any) => r.platform === 'facebook').length}\n\n` +
-                        `Total reviews: ${updatedReviews.length}`);
+                  // Force re-render by waiting a moment
+                  setTimeout(() => {
+                    const updatedIntake = getIntakeByCompanyId(company.id);
+                    console.log('Intake after save:', updatedIntake);
+                    console.log('Reviews in intake:', updatedIntake?.reviews);
+                    
+                    alert(`🎉 Successfully imported ${newReviews.length} new reviews!\n\n` +
+                          `✓ Google: ${data.reviews.filter((r: any) => r.platform === 'google').length}\n` +
+                          `✓ Yelp: ${data.reviews.filter((r: any) => r.platform === 'yelp').length}\n` +
+                          `✓ Facebook: ${data.reviews.filter((r: any) => r.platform === 'facebook').length}\n\n` +
+                          `Total reviews: ${updatedReviews.length}\n\n` +
+                          `Refresh the page to see them!`);
+                  }, 100);
                 }
               } catch (parseError) {
                 console.error('Parse error:', parseError);
