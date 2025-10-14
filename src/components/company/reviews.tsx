@@ -15,9 +15,12 @@ interface ReviewsProps {
 export function Reviews({ company }: ReviewsProps) {
   const getIntakeByCompanyId = useStore((state) => state.getIntakeByCompanyId);
   const saveIntake = useStore((state) => state.saveIntake);
+  const updateCompany = useStore((state) => state.updateCompany);
   const intake = getIntakeByCompanyId(company.id);
   
-  const [reviews, setReviews] = useState<Review[]>(intake?.reviews || []);
+  // Read directly from intake - no local state copy!
+  const reviews = intake?.reviews || [];
+  
   const [showAddForm, setShowAddForm] = useState(false);
   const [filterFiveStarOnly, setFilterFiveStarOnly] = useState(true);
   const [isImporting, setIsImporting] = useState(false);
@@ -52,7 +55,6 @@ export function Reviews({ company }: ReviewsProps) {
     };
 
     const updatedReviews = [...reviews, newReview];
-    setReviews(updatedReviews);
     
     const intakeData = intake || {
       id: 'intake-' + company.id,
@@ -84,7 +86,6 @@ export function Reviews({ company }: ReviewsProps) {
   const handleDeleteReview = (reviewId: string) => {
     if (confirm('Are you sure you want to delete this review?')) {
       const updatedReviews = reviews.filter(r => r.id !== reviewId);
-      setReviews(updatedReviews);
       
       const intakeData = intake || {
         id: 'intake-' + company.id,
@@ -163,7 +164,7 @@ export function Reviews({ company }: ReviewsProps) {
                 }
                 
                 if (data.complete && data.reviews) {
-                  console.log('Import complete! Converting reviews...');
+                  console.log('Import complete! Converting reviews...', data.reviews);
                   
                   const convertedReviews = data.reviews.map((r: any) => ({
                     id: r.id,
@@ -178,16 +179,20 @@ export function Reviews({ company }: ReviewsProps) {
                     createdAt: new Date().toISOString(),
                   }));
 
+                  console.log('Converted reviews:', convertedReviews);
+
                   const existingTexts = new Set(reviews.map(r => r.reviewText.toLowerCase().trim()));
                   const newReviews = convertedReviews.filter(r => !existingTexts.has(r.reviewText.toLowerCase().trim()));
                   
+                  console.log('New reviews after deduplication:', newReviews);
+
                   if (newReviews.length === 0) {
                     alert('ℹ️ No new reviews to import.\n\nAll reviews are already in the system.');
                     return;
                   }
 
                   const updatedReviews = [...reviews, ...newReviews];
-                  setReviews(updatedReviews);
+                  console.log('Final updated reviews array:', updatedReviews);
 
                   const intakeData = intake || {
                     id: 'intake-' + company.id,
@@ -205,6 +210,13 @@ export function Reviews({ company }: ReviewsProps) {
                     facebookUrl: data.foundUrls?.facebook || intake?.facebookUrl,
                     updatedAt: new Date().toISOString(),
                   });
+
+                  // Also update company
+                  updateCompany(company.id, {
+                    reviews: updatedReviews,
+                  });
+
+                  console.log('Saved to Zustand store');
 
                   alert(`🎉 Successfully imported ${newReviews.length} new reviews!\n\n` +
                         `✓ Google: ${data.reviews.filter((r: any) => r.platform === 'google').length}\n` +
