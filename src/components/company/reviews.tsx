@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useStore } from '@/lib/store';
+import { useHydration } from '@/hooks/useHydration';
 import { Company, Review } from '@/lib/types';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,7 @@ interface ReviewsProps {
 }
 
 export function Reviews({ company }: ReviewsProps) {
+  const hydrated = useHydration();
   const getIntakeByCompanyId = useStore((state) => state.getIntakeByCompanyId);
   const saveIntake = useStore((state) => state.saveIntake);
   const intake = getIntakeByCompanyId(company.id);
@@ -33,6 +35,15 @@ export function Reviews({ company }: ReviewsProps) {
     platform: 'Google' as 'Google' | 'Yelp' | 'Facebook' | 'TripAdvisor' | 'Other',
     reviewUrl: '',
   });
+
+  // Wait for hydration to complete
+  if (!hydrated) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
 
   const handleAddReview = () => {
     if (!formData.reviewerName.trim() || !formData.reviewText.trim()) {
@@ -216,19 +227,11 @@ export function Reviews({ company }: ReviewsProps) {
 
                   console.log('Saved to Zustand store');
 
-                  // Force re-render by waiting a moment
-                  setTimeout(() => {
-                    const updatedIntake = getIntakeByCompanyId(company.id);
-                    console.log('Intake after save:', updatedIntake);
-                    console.log('Reviews in intake:', updatedIntake?.reviews);
-                    
-                    alert(`🎉 Successfully imported ${newReviews.length} new reviews!\n\n` +
-                          `✓ Google: ${data.reviews.filter((r: any) => r.platform === 'google').length}\n` +
-                          `✓ Yelp: ${data.reviews.filter((r: any) => r.platform === 'yelp').length}\n` +
-                          `✓ Facebook: ${data.reviews.filter((r: any) => r.platform === 'facebook').length}\n\n` +
-                          `Total reviews: ${updatedReviews.length}\n\n` +
-                          `Refresh the page to see them!`);
-                  }, 100);
+                  alert(`🎉 Successfully imported ${newReviews.length} new reviews!\n\n` +
+                        `✓ Google: ${data.reviews.filter((r: any) => r.platform === 'google').length}\n` +
+                        `✓ Yelp: ${data.reviews.filter((r: any) => r.platform === 'yelp').length}\n` +
+                        `✓ Facebook: ${data.reviews.filter((r: any) => r.platform === 'facebook').length}\n\n` +
+                        `Total reviews: ${updatedReviews.length}`);
                 }
               } catch (parseError) {
                 console.error('Parse error:', parseError);
