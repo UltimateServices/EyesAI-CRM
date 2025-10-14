@@ -2,89 +2,98 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
+  apiKey: process.env.ANTHROPIC_API_KEY || '',
 });
 
 export async function POST(request: NextRequest) {
   try {
-    const { documentText } = await request.json();
+    const { document, companyName } = await request.json();
 
-    console.log('Parsing intake document...');
+    if (!document || !document.trim()) {
+      return NextResponse.json(
+        { success: false, error: 'No document provided' },
+        { status: 400 }
+      );
+    }
 
-    const prompt = `You are a data extraction assistant. Extract ALL information from this business intake document and return it as structured JSON.
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return NextResponse.json(
+        { success: false, error: 'Anthropic API key not configured' },
+        { status: 500 }
+      );
+    }
 
-DOCUMENT TEXT:
-${documentText}
+    console.log('📄 Parsing intake document for:', companyName);
+    console.log('Document length:', document.length, 'characters');
 
-Extract and return JSON with these EXACT field names. Copy text EXACTLY as written - do NOT modify, shorten, or summarize:
+    const prompt = `You are an expert at extracting structured business data from intake documents.
+
+Extract ALL available information from this business intake document and return it as a JSON object with these exact field names:
 
 {
-  "legalCanonicalName": "",
-  "alsoKnownAs": "",
-  "industryCategoryBadges": "",
-  "yearEstablished": "",
-  "ownershipHeritage": "",
-  "businessStatus": "",
-  "taglineSlogan": "",
-  "shortDescription": "",
-  "verificationTier": "",
-  "website": "",
-  "mainPhone": "",
-  "physicalAddress": "",
-  "onlineOrdering": "",
-  "emails": "",
-  "canonicalDomain": "",
-  "latitudeLongitude": "",
-  "geoSource": "",
-  "localFocus": "",
-  "primaryNearbyTowns": "",
-  "businessHours": "",
-  "responseTime": "",
-  "servicesOffered": "",
-  "verifiedFiveStarTotal": "",
-  "googleReviewsTotal": "",
-  "reviewLinks": "",
-  "yelpInfo": "",
-  "facebookInfo": "",
-  "tripadvisorInfo": "",
-  "directProfiles": "",
-  "quickFacts": "",
-  "primarySeoKeywords": "",
-  "verifiedFallbackBadges": "",
-  "instagramUrl": "",
-  "facebookUrl": "",
-  "galleryUrl": "",
-  "recipesUrl": "",
-  "visualAssets": "",
-  "faqs": "",
-  "changeLogConfidenceGaps": "",
-  "comparativeValueTable": "",
-  "metaTitle": "",
-  "metaDescription": "",
-  "jsonLdSchema": "",
-  "internalLinks": "",
-  "externalCitations": "",
-  "schemaElementsIncluded": "",
-  "aiDiscoveryTier": "",
-  "lastUpdatedDate": ""
+  "legalCanonicalName": "Full legal business name",
+  "alsoKnownAs": "DBA, aliases, former names",
+  "industryCategoryBadges": "Industry and category tags",
+  "yearEstablished": "Year founded",
+  "ownershipHeritage": "Family-owned, ownership details",
+  "businessStatus": "Current business status",
+  "taglineSlogan": "Company tagline or slogan",
+  "shortDescription": "Brief business overview (50-80 words)",
+  "verificationTier": "Verification level if mentioned",
+  "officialName": "Official business name",
+  "website": "Website URL",
+  "mainPhone": "Primary phone number",
+  "physicalAddress": "Full street address",
+  "onlineOrdering": "Online ordering info",
+  "emails": "Email addresses",
+  "canonicalDomain": "Primary domain",
+  "latitudeLongitude": "GPS coordinates",
+  "geoSource": "Geolocation source",
+  "localFocus": "Geographic focus area",
+  "primaryNearbyTowns": "Nearby towns/cities served",
+  "businessHours": "Operating hours",
+  "responseTime": "Typical response time",
+  "servicesOffered": "List of all services/products",
+  "verifiedFiveStarTotal": "Number of 5-star reviews",
+  "googleReviewsTotal": "Total Google reviews",
+  "reviewLinks": "All review platform URLs",
+  "yelpInfo": "Yelp information",
+  "facebookInfo": "Facebook information",
+  "tripadvisorInfo": "TripAdvisor information",
+  "directProfiles": "Direct profile links",
+  "googleMapsLink1": "First Google Maps URL if found",
+  "googleMapsLink2": "Second Google Maps URL if found",
+  "googleMapsLink3": "Third Google Maps URL if found",
+  "quickFacts": "Key facts and differentiators",
+  "primarySeoKeywords": "Primary SEO keywords",
+  "verifiedFallbackBadges": "Badges and certifications",
+  "socialMediaLinks": "All social media links",
+  "instagramUrl": "Instagram URL",
+  "facebookUrl": "Facebook URL",
+  "galleryUrl": "Gallery URL",
+  "recipesUrl": "Recipes URL if applicable",
+  "visualAssets": "Visual assets description",
+  "logoUrl": "Logo URL",
+  "faqs": "FAQ content"
 }
 
-CRITICAL RULES:
-- Extract text EXACTLY as written in the document
-- Do NOT modify, shorten, or summarize any content
-- Do NOT add your own interpretations
-- Preserve all formatting, bullet points (use • character), and line breaks (use \\n)
-- If a field has multiple lines, preserve them exactly with \\n between lines
-- For lists with bullets, keep the • character
-- Return ONLY the JSON object, no markdown, no code blocks, no other text
-- If a field is not found in the document, use empty string ""
+IMPORTANT RULES:
+1. Extract EVERY piece of information you find in the document
+2. If a field is not in the document, set it to empty string ""
+3. For multi-line content (like services, FAQs, hours), preserve all details
+4. Extract all URLs you find (review links, social media, etc.)
+5. Return ONLY valid JSON, no additional text
+6. Make sure all text is properly escaped for JSON
 
-Example for servicesOffered - preserve exact formatting:
-"Italian Deli & Marketplace\\n\\t•\\tHeroes, Sandwiches & Wraps — Cold cuts, Italian combos, chicken cutlet builds. Duration: 5–15 min typical. Notes: Custom builds available.\\n\\t•\\tHot Prepared Foods — Chicken parm/francaise..."`;
+Here is the intake document:
+
+${document}
+
+Return the extracted data as valid JSON:`;
 
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 16000,
+      max_tokens: 4000,
       temperature: 0,
       messages: [
         {
@@ -94,38 +103,37 @@ Example for servicesOffered - preserve exact formatting:
       ],
     });
 
-    console.log('Claude response received');
-
-    const textContent = message.content.find((block: any) => block.type === 'text');
+    const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
     
-    if (!textContent) {
-      throw new Error('No text content in response');
+    console.log('🤖 Claude response length:', responseText.length);
+
+    // Extract JSON from response (handle potential markdown code blocks)
+    let jsonText = responseText.trim();
+    if (jsonText.startsWith('```json')) {
+      jsonText = jsonText.replace(/```json\n?/, '').replace(/```\s*$/, '');
+    } else if (jsonText.startsWith('```')) {
+      jsonText = jsonText.replace(/```\n?/, '').replace(/```\s*$/, '');
     }
 
-    const text = textContent.text;
+    const extractedData = JSON.parse(jsonText);
     
-    // Try to parse JSON from the response
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error('No JSON found in response');
-    }
-
-    const extractedData = JSON.parse(jsonMatch[0]);
-
-    console.log('Document parsed successfully');
+    // Count how many fields were actually filled
+    const filledFields = Object.values(extractedData).filter(v => v && String(v).trim() !== '').length;
+    console.log('✅ Extracted', filledFields, 'fields');
 
     return NextResponse.json({
       success: true,
       data: extractedData,
+      fieldsExtracted: filledFields,
     });
+
   } catch (error: any) {
-    console.error('Parse document error:', error);
-    
+    console.error('❌ Parse error:', error);
     return NextResponse.json(
       { 
         success: false, 
         error: error.message || 'Failed to parse document',
-        details: error.toString()
+        details: error.toString() 
       },
       { status: 500 }
     );

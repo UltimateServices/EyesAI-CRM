@@ -32,44 +32,6 @@ export function Reviews({ company }: ReviewsProps) {
     reviewUrl: '',
   });
 
-  const extractGoogleUrls = (text: string): string[] => {
-    if (!text) return [];
-    
-    const urls: string[] = [];
-    
-    const parenMatches = text.match(/\(https?:\/\/[^)]+\)/gi);
-    if (parenMatches) {
-      parenMatches.forEach(match => {
-        const url = match.replace(/[()]/g, '').trim();
-        urls.push(url);
-      });
-    }
-    
-    const standardMatches = text.match(/https?:\/\/[^\s,)\]]+/gi);
-    if (standardMatches) {
-      urls.push(...standardMatches);
-    }
-    
-    const markerMatches = text.match(/(?:google|maps|g\.page|goo\.gl|share\.google)[^\s,)\]]*[^\s,)\]]+/gi);
-    if (markerMatches) {
-      markerMatches.forEach(match => {
-        if (!match.startsWith('http')) {
-          urls.push('https://' + match);
-        }
-      });
-    }
-    
-    const googleUrls = urls.filter(url => {
-      const lower = url.toLowerCase();
-      return lower.includes('google') || 
-             lower.includes('goo.gl') || 
-             lower.includes('g.page') || 
-             lower.includes('maps.app');
-    });
-    
-    return googleUrls;
-  };
-
   const handleAddReview = () => {
     if (!formData.reviewerName.trim() || !formData.reviewText.trim()) {
       alert('Please fill in reviewer name and review text');
@@ -143,172 +105,120 @@ export function Reviews({ company }: ReviewsProps) {
   };
 
   const handleImportGoogleReviews = async () => {
-    const allGoogleUrls: string[] = [];
-    
-    console.log('🔍 Checking dedicated Google Maps link fields...');
-    const dedicatedLinks = [
-      intake?.googleMapsLink1,
-      intake?.googleMapsLink2,
-      intake?.googleMapsLink3,
-      intake?.googleMapsLink4,
-      intake?.googleMapsLink5,
-    ].filter(link => link && link.trim());
-    
-    if (dedicatedLinks.length > 0) {
-      console.log(`✅ Found ${dedicatedLinks.length} manual links`);
-      allGoogleUrls.push(...dedicatedLinks);
-    }
-    
-    const fieldsToCheck = [
-      intake?.directProfiles,
-      intake?.reviewLinks,
-      intake?.googleReviewsTotal,
-      intake?.mapLink,
-      intake?.socialMediaLinks,
-      intake?.physicalAddress,
-    ];
-
-    console.log('🔍 Scanning other intake fields for Google URLs...');
-    
-    fieldsToCheck.forEach((field, index) => {
-      if (field) {
-        const urls = extractGoogleUrls(field);
-        if (urls.length > 0) {
-          console.log(`  Field ${index}: Found ${urls.length} URLs`);
-          allGoogleUrls.push(...urls);
-        }
-      }
-    });
-
-    const uniqueUrls = Array.from(new Set(allGoogleUrls));
-    
-    console.log('📊 Total unique Google URLs found:', uniqueUrls.length);
-    console.log('URLs:', uniqueUrls);
-
-    if (uniqueUrls.length === 0) {
-      const hasInfo = company.name || company.phone || company.address || intake?.physicalAddress || intake?.mainPhone;
-      
-      if (!hasInfo) {
-        alert('❌ Cannot import reviews.\n\nNo Google Maps URLs found and insufficient business information.\n\n' +
-          'Please either:\n' +
-          '1. Add Google Maps links in Intake → Part 7 → Manual Google Maps Links section, OR\n' +
-          '2. Provide business phone number and address\n\n' +
-          'Then try importing again.');
-        return;
-      }
-
-      const confirmMsg = `⚠️ No Google Maps URLs found.\n\n` +
-        `I can search for your business using:\n` +
-        `• Name: ${company.name}\n` +
-        `• Phone: ${company.phone || intake?.mainPhone || 'N/A'}\n` +
-        `• Address: ${company.address || intake?.physicalAddress || 'N/A'}\n\n` +
-        `💡 TIP: For better results, add Google Maps links manually in:\n` +
-        `Intake → Part 7 → Manual Google Maps Links\n\n` +
-        `Continue with smart search anyway?`;
-      
-      if (!confirm(confirmMsg)) {
-        return;
-      }
-    } else {
-      const confirmMsg = `🔍 Import Reviews from Google?\n\n` +
-        `Found ${uniqueUrls.length} Google URL${uniqueUrls.length > 1 ? 's' : ''}:\n\n` +
-        uniqueUrls.map((url, i) => `${i + 1}. ${url.substring(0, 50)}...`).join('\n') + '\n\n' +
-        `The system will:\n` +
-        `✓ Extract reviews from these URLs\n` +
-        `✓ Search by phone/address as backup\n` +
-        `✓ Import only 5-star reviews\n` +
-        `✓ Skip duplicates automatically\n\n` +
-        `Continue?`;
-
-      if (!confirm(confirmMsg)) {
-        return;
-      }
-    }
-
     setIsImporting(true);
     setImportError('');
 
     try {
-      console.log('🚀 Starting import...');
+      console.log('🚀 Starting import for:', company.name);
 
-      const response = await fetch('/api/import-google-reviews', {
+      const response = await fetch('/api/import-reviews-complete', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          googleMapsUrls: uniqueUrls,
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          companyId: company.id,
           companyName: company.name,
-          companyAddress: company.address || intake?.physicalAddress,
-          companyPhone: company.phone || intake?.mainPhone,
+          existingUrls: {
+            google: intake?.googleMapsLink1 || null,
+            yelp: intake?.yelpUrl || null,
+            facebook: intake?.facebookUrl || null,
+          },
         }),
       });
 
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to import reviews');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const { locations, totalLocations, totalFiveStarReviews, totalAllReviews, allFiveStarReviews } = result.data;
-
-      const importedReviews: Review[] = allFiveStarReviews.map((review: any, index: number) => ({
-        id: 'review-google-' + Date.now() + '-' + index,
-        companyId: company.id,
-        rating: 5 as 5,
-        reviewerName: review.reviewerName,
-        reviewText: review.reviewText,
-        date: review.date,
-        platform: 'Google' as const,
-        reviewUrl: review.reviewUrl,
-        source: 'intake' as const,
-        createdAt: new Date().toISOString(),
-      }));
-
-      const existingTexts = new Set(reviews.map(r => r.reviewText.toLowerCase().trim()));
-      const newReviews = importedReviews.filter(r => !existingTexts.has(r.reviewText.toLowerCase().trim()));
-      
-      if (newReviews.length === 0) {
-        alert('ℹ️ No new reviews to import.\n\nAll 5-star reviews are already in the system.');
-        setIsImporting(false);
-        return;
+      if (!response.body) {
+        throw new Error('No response body');
       }
 
-      const updatedReviews = [...reviews, ...newReviews];
-      setReviews(updatedReviews);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
 
-      const intakeData = intake || {
-        id: 'intake-' + company.id,
-        companyId: company.id,
-        status: 'draft' as const,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          console.log('Stream complete');
+          break;
+        }
 
-      saveIntake({
-        ...intakeData,
-        reviews: updatedReviews,
-        updatedAt: new Date().toISOString(),
-      });
+        const chunk = decoder.decode(value, { stream: true });
+        buffer += chunk;
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
 
-      let summaryText = `🎉 Successfully imported ${newReviews.length} new 5-star reviews!\n\n`;
-      summaryText += `📊 Import Summary:\n`;
-      summaryText += `━━━━━━━━━━━━━━━━━━━━\n`;
-      summaryText += `✓ Locations Found: ${totalLocations}\n`;
-      summaryText += `✓ Total Reviews: ${totalAllReviews}\n`;
-      summaryText += `✓ 5-Star Reviews: ${totalFiveStarReviews}\n`;
-      summaryText += `✓ New Added: ${newReviews.length}\n`;
-      summaryText += `✓ Duplicates Skipped: ${totalFiveStarReviews - newReviews.length}\n\n`;
-      summaryText += `📍 Locations:\n`;
-      summaryText += `━━━━━━━━━━━━━━━━━━━━\n`;
-      
-      locations.forEach((loc: any, index: number) => {
-        summaryText += `\n${index + 1}. ${loc.locationName}\n`;
-        summaryText += `   📍 ${loc.locationAddress}\n`;
-        summaryText += `   ⭐ ${loc.overallRating} rating\n`;
-        summaryText += `   💬 ${loc.fiveStarReviews.length} 5-star reviews imported\n`;
-        if (loc.phone) summaryText += `   📞 ${loc.phone}\n`;
-      });
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.slice(6).trim();
+            if (jsonStr) {
+              try {
+                const data = JSON.parse(jsonStr);
 
-      alert(summaryText);
+                if (data.searchLog) {
+                  console.log(data.searchLog);
+                }
+                
+                if (data.complete && data.reviews) {
+                  console.log('Import complete! Converting reviews...');
+                  
+                  const convertedReviews = data.reviews.map((r: any) => ({
+                    id: r.id,
+                    companyId: company.id,
+                    rating: r.rating as 1 | 2 | 3 | 4 | 5,
+                    reviewerName: r.author,
+                    reviewText: r.text,
+                    date: r.date,
+                    platform: (r.platform.charAt(0).toUpperCase() + r.platform.slice(1)) as 'Google' | 'Yelp' | 'Facebook',
+                    reviewUrl: r.url,
+                    source: 'intake' as const,
+                    createdAt: new Date().toISOString(),
+                  }));
+
+                  const existingTexts = new Set(reviews.map(r => r.reviewText.toLowerCase().trim()));
+                  const newReviews = convertedReviews.filter(r => !existingTexts.has(r.reviewText.toLowerCase().trim()));
+                  
+                  if (newReviews.length === 0) {
+                    alert('ℹ️ No new reviews to import.\n\nAll reviews are already in the system.');
+                    return;
+                  }
+
+                  const updatedReviews = [...reviews, ...newReviews];
+                  setReviews(updatedReviews);
+
+                  const intakeData = intake || {
+                    id: 'intake-' + company.id,
+                    companyId: company.id,
+                    status: 'draft' as const,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                  };
+
+                  saveIntake({
+                    ...intakeData,
+                    reviews: updatedReviews,
+                    googleMapsLink1: data.foundUrls?.google || intake?.googleMapsLink1,
+                    yelpUrl: data.foundUrls?.yelp || intake?.yelpUrl,
+                    facebookUrl: data.foundUrls?.facebook || intake?.facebookUrl,
+                    updatedAt: new Date().toISOString(),
+                  });
+
+                  alert(`🎉 Successfully imported ${newReviews.length} new reviews!\n\n` +
+                        `✓ Google: ${data.reviews.filter((r: any) => r.platform === 'google').length}\n` +
+                        `✓ Yelp: ${data.reviews.filter((r: any) => r.platform === 'yelp').length}\n` +
+                        `✓ Facebook: ${data.reviews.filter((r: any) => r.platform === 'facebook').length}\n\n` +
+                        `Total reviews: ${updatedReviews.length}`);
+                }
+              } catch (parseError) {
+                console.error('Parse error:', parseError);
+              }
+            }
+          }
+        }
+      }
     } catch (error: any) {
       console.error('❌ Import error:', error);
       setImportError(error.message);
@@ -360,13 +270,13 @@ export function Reviews({ company }: ReviewsProps) {
               ) : (
                 <>
                   <Download className="w-4 h-4" />
-                  Import from Google
+                  Smart Import
                 </>
               )}
             </Button>
             <Button onClick={() => setShowAddForm(true)} className="gap-2">
               <Plus className="w-4 h-4" />
-              Add Review
+              Add Manually
             </Button>
           </div>
         </div>
@@ -525,28 +435,20 @@ export function Reviews({ company }: ReviewsProps) {
       <Card className="p-6 bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
         <h4 className="font-semibold text-slate-900 mb-3">🚀 Smart Import Technology</h4>
         <p className="text-sm text-slate-700 mb-3">
-          Our system uses 5 advanced strategies to find your reviews:
+          Our AI-powered system automatically finds and imports reviews from Google, Yelp, and Facebook.
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-slate-700">
           <div className="flex items-start gap-2">
-            <span className="text-blue-600 font-bold">1.</span>
-            <span><strong>Manual Links:</strong> Prioritizes dedicated Google Maps fields in intake</span>
+            <span className="text-blue-600 font-bold">✓</span>
+            <span><strong>AI Search:</strong> Finds your business across all platforms</span>
           </div>
           <div className="flex items-start gap-2">
-            <span className="text-blue-600 font-bold">2.</span>
-            <span><strong>Phone Search:</strong> Finds listings by phone number</span>
+            <span className="text-blue-600 font-bold">✓</span>
+            <span><strong>Multi-Platform:</strong> Google, Yelp, and Facebook</span>
           </div>
           <div className="flex items-start gap-2">
-            <span className="text-blue-600 font-bold">3.</span>
-            <span><strong>Address Match:</strong> Locates by business address</span>
-          </div>
-          <div className="flex items-start gap-2">
-            <span className="text-blue-600 font-bold">4.</span>
-            <span><strong>Name Search:</strong> Discovers by business name</span>
-          </div>
-          <div className="flex items-start gap-2">
-            <span className="text-blue-600 font-bold">5.</span>
-            <span><strong>Nearby Scan:</strong> Checks nearby locations</span>
+            <span className="text-blue-600 font-bold">✓</span>
+            <span><strong>Real-Time:</strong> See progress as reviews are imported</span>
           </div>
           <div className="flex items-start gap-2">
             <span className="text-green-600 font-bold">✓</span>
@@ -555,7 +457,7 @@ export function Reviews({ company }: ReviewsProps) {
         </div>
         <div className="mt-4 p-3 bg-white rounded border border-blue-200">
           <p className="text-xs text-slate-600">
-            <strong>💡 Pro Tip:</strong> Add Google Maps links manually in Intake → Part 7 → Manual Google Maps Links for the most reliable results!
+            <strong>💡 Pro Tip:</strong> Add Google Maps links manually in Intake → Part 7 for the most accurate results!
           </p>
         </div>
       </Card>

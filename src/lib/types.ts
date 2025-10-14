@@ -10,7 +10,15 @@ export interface Company {
   plan: 'DISCOVER' | 'VERIFIED';
   assignedVaName?: string;
   createdAt: string;
-  lastUpdated: string;
+  updatedAt: string;
+  
+  // Review platform URLs
+  googleMapsUrl?: string;
+  yelpUrl?: string;
+  facebookUrl?: string;
+  
+  // Reviews array
+  reviews?: Review[];
 }
 
 export interface Intake {
@@ -149,15 +157,12 @@ export interface Intake {
 
 export interface Review {
   id: string;
-  companyId: string;
-  rating: 1 | 2 | 3 | 4 | 5;
-  reviewerName: string;
-  reviewText: string;
+  author: string;
+  rating: number;
+  text: string;
   date: string;
-  platform: 'Google' | 'Yelp' | 'Facebook' | 'TripAdvisor' | 'Other';
-  reviewUrl?: string;
-  source: 'manual' | 'intake';
-  createdAt: string;
+  platform: 'google' | 'yelp' | 'facebook';
+  url?: string;
 }
 
 export interface VerificationLogEntry {
@@ -178,7 +183,7 @@ export interface Task {
   status: 'todo' | 'in_progress' | 'done';
   priority: 'low' | 'medium' | 'high';
   assignedTo?: string;
-  dueDate?: string;
+  dueAt?: string;
   createdAt: string;
   updatedAt: string;
 }
