@@ -18,7 +18,6 @@ export function IntakeForm({ company }: IntakeFormProps) {
   const intake = getIntakeByCompanyId(company.id);
 
   const [formData, setFormData] = useState({
-    // Part 1
     legalCanonicalName: intake?.legalCanonicalName || '',
     alsoKnownAs: intake?.alsoKnownAs || '',
     industryCategoryBadges: intake?.industryCategoryBadges || '',
@@ -28,8 +27,6 @@ export function IntakeForm({ company }: IntakeFormProps) {
     taglineSlogan: intake?.taglineSlogan || '',
     shortDescription: intake?.shortDescription || '',
     verificationTier: intake?.verificationTier || '',
-    
-    // Part 2
     officialName: intake?.officialName || '',
     website: intake?.website || '',
     mainPhone: intake?.mainPhone || '',
@@ -37,23 +34,13 @@ export function IntakeForm({ company }: IntakeFormProps) {
     onlineOrdering: intake?.onlineOrdering || '',
     emails: intake?.emails || '',
     canonicalDomain: intake?.canonicalDomain || '',
-    
-    // Part 3
     latitudeLongitude: intake?.latitudeLongitude || '',
     geoSource: intake?.geoSource || '',
-    
-    // Part 4
     localFocus: intake?.localFocus || '',
     primaryNearbyTowns: intake?.primaryNearbyTowns || '',
-    
-    // Part 5
     businessHours: intake?.businessHours || '',
     responseTime: intake?.responseTime || '',
-    
-    // Part 6
     servicesOffered: intake?.servicesOffered || '',
-    
-    // Part 7
     verifiedFiveStarTotal: intake?.verifiedFiveStarTotal || '',
     googleReviewsTotal: intake?.googleReviewsTotal || '',
     reviewLinks: intake?.reviewLinks || '',
@@ -66,30 +53,75 @@ export function IntakeForm({ company }: IntakeFormProps) {
     googleMapsLink3: intake?.googleMapsLink3 || '',
     googleMapsLink4: intake?.googleMapsLink4 || '',
     googleMapsLink5: intake?.googleMapsLink5 || '',
-    
-    // Part 8
     quickFacts: intake?.quickFacts || '',
     primarySeoKeywords: intake?.primarySeoKeywords || '',
     verifiedFallbackBadges: intake?.verifiedFallbackBadges || '',
-    
-    // Part 9
     socialMediaLinks: intake?.socialMediaLinks || '',
     instagramUrl: intake?.instagramUrl || '',
     facebookUrl: intake?.facebookUrl || '',
     galleryUrl: intake?.galleryUrl || '',
     recipesUrl: intake?.recipesUrl || '',
-    
-    // Part 10
     visualAssets: intake?.visualAssets || '',
     logoUrl: intake?.logoUrl || '',
-    
-    // Part 11
     faqs: intake?.faqs || '',
   });
 
   const [showPasteModal, setShowPasteModal] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+
+  useEffect(() => {
+    if (intake) {
+      setFormData({
+        legalCanonicalName: intake.legalCanonicalName || '',
+        alsoKnownAs: intake.alsoKnownAs || '',
+        industryCategoryBadges: intake.industryCategoryBadges || '',
+        yearEstablished: intake.yearEstablished || '',
+        ownershipHeritage: intake.ownershipHeritage || '',
+        businessStatus: intake.businessStatus || '',
+        taglineSlogan: intake.taglineSlogan || '',
+        shortDescription: intake.shortDescription || '',
+        verificationTier: intake.verificationTier || '',
+        officialName: intake.officialName || '',
+        website: intake.website || '',
+        mainPhone: intake.mainPhone || '',
+        physicalAddress: intake.physicalAddress || '',
+        onlineOrdering: intake.onlineOrdering || '',
+        emails: intake.emails || '',
+        canonicalDomain: intake.canonicalDomain || '',
+        latitudeLongitude: intake.latitudeLongitude || '',
+        geoSource: intake.geoSource || '',
+        localFocus: intake.localFocus || '',
+        primaryNearbyTowns: intake.primaryNearbyTowns || '',
+        businessHours: intake.businessHours || '',
+        responseTime: intake.responseTime || '',
+        servicesOffered: intake.servicesOffered || '',
+        verifiedFiveStarTotal: intake.verifiedFiveStarTotal || '',
+        googleReviewsTotal: intake.googleReviewsTotal || '',
+        reviewLinks: intake.reviewLinks || '',
+        yelpInfo: intake.yelpInfo || '',
+        facebookInfo: intake.facebookInfo || '',
+        tripadvisorInfo: intake.tripadvisorInfo || '',
+        directProfiles: intake.directProfiles || '',
+        googleMapsLink1: intake.googleMapsLink1 || '',
+        googleMapsLink2: intake.googleMapsLink2 || '',
+        googleMapsLink3: intake.googleMapsLink3 || '',
+        googleMapsLink4: intake.googleMapsLink4 || '',
+        googleMapsLink5: intake.googleMapsLink5 || '',
+        quickFacts: intake.quickFacts || '',
+        primarySeoKeywords: intake.primarySeoKeywords || '',
+        verifiedFallbackBadges: intake.verifiedFallbackBadges || '',
+        socialMediaLinks: intake.socialMediaLinks || '',
+        instagramUrl: intake.instagramUrl || '',
+        facebookUrl: intake.facebookUrl || '',
+        galleryUrl: intake.galleryUrl || '',
+        recipesUrl: intake.recipesUrl || '',
+        visualAssets: intake.visualAssets || '',
+        logoUrl: intake.logoUrl || '',
+        faqs: intake.faqs || '',
+      });
+    }
+  }, [intake]);
 
   const handleFieldChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -148,17 +180,28 @@ export function IntakeForm({ company }: IntakeFormProps) {
         throw new Error(result.error || 'Failed to parse document');
       }
 
-      setFormData(prev => ({
-        ...prev,
-        ...result.data,
-      }));
+      const parsedData = result.data;
+      
+      setFormData(prev => {
+        const newData: any = { ...prev };
+        
+        Object.keys(parsedData).forEach(key => {
+          if (parsedData[key] !== undefined && parsedData[key] !== null && parsedData[key] !== '') {
+            newData[key] = parsedData[key];
+          }
+        });
+        
+        return newData;
+      });
 
       setShowPasteModal(false);
       setPasteText('');
-      alert('✅ Document parsed successfully! Review the fields and save.');
+      
+      const fieldCount = Object.keys(parsedData).filter(key => parsedData[key]).length;
+      alert(`✅ Document parsed successfully!\n\nFilled ${fieldCount} fields.\n\nReview the fields and click "Save Draft" when ready.`);
     } catch (error: any) {
       console.error('Parse error:', error);
-      alert('❌ Failed to parse document: ' + error.message);
+      alert('❌ Failed to parse document:\n\n' + error.message);
     } finally {
       setIsProcessing(false);
     }
@@ -201,7 +244,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
         </Card>
       )}
 
-      {/* Part 1 - Basic Info */}
+      {/* Part 1 */}
       <Card className="p-6">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <span className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center text-sm">1</span>
@@ -209,9 +252,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Legal/Canonical Name
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Legal/Canonical Name</label>
             <input
               type="text"
               value={formData.legalCanonicalName}
@@ -219,11 +260,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Also Known As (AKA)
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Also Known As (AKA)</label>
             <input
               type="text"
               value={formData.alsoKnownAs}
@@ -231,11 +269,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Industry Category Badges
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Industry Category Badges</label>
             <input
               type="text"
               value={formData.industryCategoryBadges}
@@ -243,11 +278,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Year Established
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Year Established</label>
             <input
               type="text"
               value={formData.yearEstablished}
@@ -255,11 +287,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Ownership Heritage
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Ownership Heritage</label>
             <input
               type="text"
               value={formData.ownershipHeritage}
@@ -267,11 +296,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Business Status
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Business Status</label>
             <input
               type="text"
               value={formData.businessStatus}
@@ -279,11 +305,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
             />
           </div>
-
           <div className="col-span-2">
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Tagline/Slogan
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Tagline/Slogan</label>
             <input
               type="text"
               value={formData.taglineSlogan}
@@ -291,11 +314,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
             />
           </div>
-
           <div className="col-span-2">
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Short Description
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Short Description</label>
             <textarea
               value={formData.shortDescription}
               onChange={(e) => handleFieldChange('shortDescription', e.target.value)}
@@ -306,7 +326,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
         </div>
       </Card>
 
-      {/* Part 2 - Contact */}
+      {/* Part 2 */}
       <Card className="p-6">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <span className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center text-sm">2</span>
@@ -314,9 +334,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Official Name
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Official Name</label>
             <input
               type="text"
               value={formData.officialName}
@@ -324,11 +342,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Website
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Website</label>
             <input
               type="url"
               value={formData.website}
@@ -336,11 +351,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Main Phone
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Main Phone</label>
             <input
               type="tel"
               value={formData.mainPhone}
@@ -348,11 +360,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Physical Address
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Physical Address</label>
             <input
               type="text"
               value={formData.physicalAddress}
@@ -360,11 +369,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Online Ordering
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Online Ordering</label>
             <input
               type="text"
               value={formData.onlineOrdering}
@@ -372,11 +378,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Emails
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Emails</label>
             <input
               type="text"
               value={formData.emails}
@@ -387,7 +390,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
         </div>
       </Card>
 
-      {/* Part 3 - Geolocation */}
+      {/* Part 3 */}
       <Card className="p-6">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <span className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center text-sm">3</span>
@@ -395,9 +398,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Latitude/Longitude
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Latitude/Longitude</label>
             <input
               type="text"
               value={formData.latitudeLongitude}
@@ -405,11 +406,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Geo Source
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Geo Source</label>
             <input
               type="text"
               value={formData.geoSource}
@@ -420,7 +418,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
         </div>
       </Card>
 
-      {/* Part 4 - Service Area */}
+      {/* Part 4 */}
       <Card className="p-6">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <span className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center text-sm">4</span>
@@ -428,9 +426,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
         </h3>
         <div className="grid grid-cols-1 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Local Focus
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Local Focus</label>
             <textarea
               value={formData.localFocus}
               onChange={(e) => handleFieldChange('localFocus', e.target.value)}
@@ -438,11 +434,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
               rows={2}
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Primary Nearby Towns
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Primary Nearby Towns</label>
             <textarea
               value={formData.primaryNearbyTowns}
               onChange={(e) => handleFieldChange('primaryNearbyTowns', e.target.value)}
@@ -453,7 +446,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
         </div>
       </Card>
 
-      {/* Part 5 - Hours */}
+      {/* Part 5 */}
       <Card className="p-6">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <span className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center text-sm">5</span>
@@ -461,9 +454,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Business Hours
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Business Hours</label>
             <textarea
               value={formData.businessHours}
               onChange={(e) => handleFieldChange('businessHours', e.target.value)}
@@ -471,11 +462,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
               rows={3}
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Response Time
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Response Time</label>
             <input
               type="text"
               value={formData.responseTime}
@@ -486,16 +474,14 @@ export function IntakeForm({ company }: IntakeFormProps) {
         </div>
       </Card>
 
-      {/* Part 6 - Services */}
+      {/* Part 6 */}
       <Card className="p-6">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <span className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center text-sm">6</span>
           Part 6 – Services / Products Offered
         </h3>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
-            Services Offered
-          </label>
+          <label className="block text-sm font-medium text-slate-700 mb-2">Services Offered</label>
           <textarea
             value={formData.servicesOffered}
             onChange={(e) => handleFieldChange('servicesOffered', e.target.value)}
@@ -505,7 +491,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
         </div>
       </Card>
 
-      {/* Part 7 - Reviews */}
+      {/* Part 7 */}
       <Card className="p-6">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <span className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center text-sm">7</span>
@@ -513,9 +499,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              ⭐ Verified 5-Star Reviews (Total)
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">⭐ Verified 5-Star Reviews (Total)</label>
             <input
               type="text"
               value={formData.verifiedFiveStarTotal}
@@ -523,11 +507,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Google Reviews (Total)
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Google Reviews (Total)</label>
             <input
               type="text"
               value={formData.googleReviewsTotal}
@@ -535,11 +516,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
             />
           </div>
-
           <div className="col-span-2">
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Review Links
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Review Links</label>
             <textarea
               value={formData.reviewLinks}
               onChange={(e) => handleFieldChange('reviewLinks', e.target.value)}
@@ -547,11 +525,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
               rows={3}
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Yelp Info
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Yelp Info</label>
             <textarea
               value={formData.yelpInfo}
               onChange={(e) => handleFieldChange('yelpInfo', e.target.value)}
@@ -559,11 +534,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
               rows={2}
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Facebook Info
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Facebook Info</label>
             <textarea
               value={formData.facebookInfo}
               onChange={(e) => handleFieldChange('facebookInfo', e.target.value)}
@@ -571,11 +543,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
               rows={2}
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              TripAdvisor Info
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">TripAdvisor Info</label>
             <textarea
               value={formData.tripadvisorInfo}
               onChange={(e) => handleFieldChange('tripadvisorInfo', e.target.value)}
@@ -583,11 +552,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
               rows={2}
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Direct Profiles
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Direct Profiles</label>
             <textarea
               value={formData.directProfiles}
               onChange={(e) => handleFieldChange('directProfiles', e.target.value)}
@@ -596,7 +562,6 @@ export function IntakeForm({ company }: IntakeFormProps) {
             />
           </div>
 
-          {/* Manual Google Maps Links Section */}
           <div className="col-span-2 mt-6 p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
             <h4 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
               <MapPin className="w-5 h-5 text-blue-600" />
@@ -608,9 +573,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
             
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Location 1 - Google Maps URL
-                </label>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Location 1 - Google Maps URL</label>
                 <input
                   type="url"
                   value={formData.googleMapsLink1}
@@ -619,11 +582,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
                   placeholder="https://maps.google.com/..."
                 />
               </div>
-              
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Location 2 - Google Maps URL
-                </label>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Location 2 - Google Maps URL</label>
                 <input
                   type="url"
                   value={formData.googleMapsLink2}
@@ -632,11 +592,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
                   placeholder="https://maps.google.com/..."
                 />
               </div>
-              
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Location 3 - Google Maps URL
-                </label>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Location 3 - Google Maps URL</label>
                 <input
                   type="url"
                   value={formData.googleMapsLink3}
@@ -645,11 +602,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
                   placeholder="https://maps.google.com/..."
                 />
               </div>
-              
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Location 4 - Google Maps URL
-                </label>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Location 4 - Google Maps URL</label>
                 <input
                   type="url"
                   value={formData.googleMapsLink4}
@@ -658,11 +612,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
                   placeholder="https://maps.google.com/..."
                 />
               </div>
-              
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Location 5 - Google Maps URL
-                </label>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Location 5 - Google Maps URL</label>
                 <input
                   type="url"
                   value={formData.googleMapsLink5}
@@ -682,7 +633,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
         </div>
       </Card>
 
-      {/* Part 8 - Metrics */}
+      {/* Part 8 */}
       <Card className="p-6">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <span className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center text-sm">8</span>
@@ -690,9 +641,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
         </h3>
         <div className="grid grid-cols-1 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Quick Facts
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Quick Facts</label>
             <textarea
               value={formData.quickFacts}
               onChange={(e) => handleFieldChange('quickFacts', e.target.value)}
@@ -700,11 +649,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
               rows={3}
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Primary SEO Keywords
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Primary SEO Keywords</label>
             <input
               type="text"
               value={formData.primarySeoKeywords}
@@ -715,7 +661,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
         </div>
       </Card>
 
-      {/* Part 9 - Social Media */}
+      {/* Part 9 */}
       <Card className="p-6">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <span className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center text-sm">9</span>
@@ -723,9 +669,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="col-span-2">
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Social Media Links
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Social Media Links</label>
             <textarea
               value={formData.socialMediaLinks}
               onChange={(e) => handleFieldChange('socialMediaLinks', e.target.value)}
@@ -733,11 +677,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
               rows={2}
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Instagram URL
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Instagram URL</label>
             <input
               type="url"
               value={formData.instagramUrl}
@@ -745,11 +686,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Facebook URL
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Facebook URL</label>
             <input
               type="url"
               value={formData.facebookUrl}
@@ -760,7 +698,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
         </div>
       </Card>
 
-      {/* Part 10 - Visual Assets */}
+      {/* Part 10 */}
       <Card className="p-6">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <span className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center text-sm">10</span>
@@ -768,9 +706,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
         </h3>
         <div className="grid grid-cols-1 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Visual Assets
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Visual Assets</label>
             <textarea
               value={formData.visualAssets}
               onChange={(e) => handleFieldChange('visualAssets', e.target.value)}
@@ -778,11 +714,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
               rows={3}
             />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Logo URL
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Logo URL</label>
             <input
               type="url"
               value={formData.logoUrl}
@@ -793,16 +726,14 @@ export function IntakeForm({ company }: IntakeFormProps) {
         </div>
       </Card>
 
-      {/* Part 11 - FAQs */}
+      {/* Part 11 */}
       <Card className="p-6">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <span className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center text-sm">11</span>
           Part 11 – FAQs
         </h3>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
-            FAQs
-          </label>
+          <label className="block text-sm font-medium text-slate-700 mb-2">FAQs</label>
           <textarea
             value={formData.faqs}
             onChange={(e) => handleFieldChange('faqs', e.target.value)}
