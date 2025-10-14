@@ -35,7 +35,7 @@ export interface Intake {
   mainPhone?: string;
   physicalAddress?: string;
   onlineOrdering?: string;
-  emails?: string[];
+  emails?: string | string[];
   canonicalDomain?: string;
   
   // Part 3 - Geolocation Data
@@ -95,6 +95,9 @@ export interface Intake {
   aiDiscoveryTier?: string;
   lastUpdatedDate?: string;
   
+  // Reviews
+  reviews?: Review[];
+  
   // Legacy fields
   category?: string;
   founded?: string;
@@ -135,6 +138,19 @@ export interface Intake {
   updatedAt: string;
   completedAt?: string;
   completedBy?: string;
+}
+
+export interface Review {
+  id: string;
+  companyId: string;
+  rating: 1 | 2 | 3 | 4 | 5;
+  reviewerName: string;
+  reviewText: string;
+  date: string;
+  platform: 'Google' | 'Yelp' | 'Facebook' | 'TripAdvisor' | 'Other';
+  reviewUrl?: string;
+  source: 'manual' | 'intake';
+  createdAt: string;
 }
 
 export interface VerificationLogEntry {

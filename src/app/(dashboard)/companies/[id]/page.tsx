@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CompanyOverview } from '@/components/company/company-overview';
 import { IntakeForm } from '@/components/company/intake-form';
 import { MediaGallery } from '@/components/company/media-gallery';
+import { Reviews } from '@/components/company/reviews';
 import { 
   ArrowLeft, 
   Building2, 
@@ -136,7 +137,6 @@ export default function CompanyDetailPage() {
                 )}
               </div>
 
-              {/* Only show reviews if we have real data from intake */}
               {intake && intake.status === 'complete' && (intake.verifiedFiveStarTotal || intake.googleReviewsTotal) && (
                 <div className="flex items-center gap-2 mt-3 text-sm">
                   <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
@@ -179,6 +179,7 @@ export default function CompanyDetailPage() {
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="intake">Intake</TabsTrigger>
           <TabsTrigger value="media">Media</TabsTrigger>
+          <TabsTrigger value="reviews">Reviews</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-6">
@@ -191,6 +192,10 @@ export default function CompanyDetailPage() {
 
         <TabsContent value="media" className="mt-6">
           <MediaGallery company={company} />
+        </TabsContent>
+
+        <TabsContent value="reviews" className="mt-6">
+          <Reviews company={company} />
         </TabsContent>
       </Tabs>
     </div>
