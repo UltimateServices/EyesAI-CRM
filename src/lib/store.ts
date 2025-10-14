@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import { Company, Task, Intake, VerificationLogEntry } from './types';
 
 interface AppState {
@@ -208,6 +208,18 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'eyesai-crm-storage',
+      storage: createJSONStorage(() => {
+        // Only use localStorage on client side
+        if (typeof window !== 'undefined') {
+          return localStorage;
+        }
+        // Return dummy storage for SSR
+        return {
+          getItem: () => null,
+          setItem: () => {},
+          removeItem: () => {},
+        };
+      }),
     }
   )
 );
