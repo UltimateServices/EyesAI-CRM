@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CompanyOverview } from '@/components/company/company-overview';
 import { IntakeForm } from '@/components/company/intake-form';
 import MediaGallery from '@/components/company/media-gallery';
-import Reviews from '@/components/company/reviews';
+import { Reviews } from '@/components/company/reviews';
 import { 
   ArrowLeft, 
   Building2, 
