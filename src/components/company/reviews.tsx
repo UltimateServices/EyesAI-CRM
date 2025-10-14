@@ -32,6 +32,44 @@ export function Reviews({ company }: ReviewsProps) {
     reviewUrl: '',
   });
 
+  const extractGoogleUrls = (text: string): string[] => {
+    if (!text) return [];
+    
+    const urls: string[] = [];
+    
+    const parenMatches = text.match(/\(https?:\/\/[^)]+\)/gi);
+    if (parenMatches) {
+      parenMatches.forEach(match => {
+        const url = match.replace(/[()]/g, '').trim();
+        urls.push(url);
+      });
+    }
+    
+    const standardMatches = text.match(/https?:\/\/[^\s,)\]]+/gi);
+    if (standardMatches) {
+      urls.push(...standardMatches);
+    }
+    
+    const markerMatches = text.match(/(?:google|maps|g\.page|goo\.gl|share\.google)[^\s,)\]]*[^\s,)\]]+/gi);
+    if (markerMatches) {
+      markerMatches.forEach(match => {
+        if (!match.startsWith('http')) {
+          urls.push('https://' + match);
+        }
+      });
+    }
+    
+    const googleUrls = urls.filter(url => {
+      const lower = url.toLowerCase();
+      return lower.includes('google') || 
+             lower.includes('goo.gl') || 
+             lower.includes('g.page') || 
+             lower.includes('maps.app');
+    });
+    
+    return googleUrls;
+  };
+
   const handleAddReview = () => {
     if (!formData.reviewerName.trim() || !formData.reviewText.trim()) {
       alert('Please fill in reviewer name and review text');
@@ -105,56 +143,93 @@ export function Reviews({ company }: ReviewsProps) {
   };
 
   const handleImportGoogleReviews = async () => {
-    const googleMapsUrls: string[] = [];
+    const allGoogleUrls: string[] = [];
+    
+    console.log('🔍 Checking dedicated Google Maps link fields...');
+    const dedicatedLinks = [
+      intake?.googleMapsLink1,
+      intake?.googleMapsLink2,
+      intake?.googleMapsLink3,
+      intake?.googleMapsLink4,
+      intake?.googleMapsLink5,
+    ].filter(link => link && link.trim());
+    
+    if (dedicatedLinks.length > 0) {
+      console.log(`✅ Found ${dedicatedLinks.length} manual links`);
+      allGoogleUrls.push(...dedicatedLinks);
+    }
     
     const fieldsToCheck = [
       intake?.directProfiles,
       intake?.reviewLinks,
       intake?.googleReviewsTotal,
       intake?.mapLink,
-      intake?.website,
       intake?.socialMediaLinks,
       intake?.physicalAddress,
-      company.website,
-      company.address,
     ];
 
-    for (const field of fieldsToCheck) {
-      if (!field) continue;
-      
-      const urlMatches = field.match(/https?:\/\/[^\s,)]+/gi);
-      if (urlMatches) {
-        const googleUrls = urlMatches.filter(url => 
-          url.toLowerCase().includes('google') || 
-          url.includes('goo.gl') ||
-          url.includes('g.page') ||
-          url.includes('maps.app')
-        );
-        googleMapsUrls.push(...googleUrls);
+    console.log('🔍 Scanning other intake fields for Google URLs...');
+    
+    fieldsToCheck.forEach((field, index) => {
+      if (field) {
+        const urls = extractGoogleUrls(field);
+        if (urls.length > 0) {
+          console.log(`  Field ${index}: Found ${urls.length} URLs`);
+          allGoogleUrls.push(...urls);
+        }
       }
-    }
+    });
 
-    const uniqueUrls = Array.from(new Set(googleMapsUrls));
+    const uniqueUrls = Array.from(new Set(allGoogleUrls));
+    
+    console.log('📊 Total unique Google URLs found:', uniqueUrls.length);
+    console.log('URLs:', uniqueUrls);
 
-    const confirmMsg = `🔍 Import Reviews from Google?\n\n` +
-      `This will use multiple strategies to find reviews:\n\n` +
-      `✓ ${uniqueUrls.length > 0 ? `Process ${uniqueUrls.length} Google URLs` : 'Search by business info'}\n` +
-      `✓ Search by phone number\n` +
-      `✓ Search by address\n` +
-      `✓ Search by business name\n` +
-      `✓ Nearby location search\n\n` +
-      `The system will try every method to find your reviews.\n\n` +
-      `Continue?`;
+    if (uniqueUrls.length === 0) {
+      const hasInfo = company.name || company.phone || company.address || intake?.physicalAddress || intake?.mainPhone;
+      
+      if (!hasInfo) {
+        alert('❌ Cannot import reviews.\n\nNo Google Maps URLs found and insufficient business information.\n\n' +
+          'Please either:\n' +
+          '1. Add Google Maps links in Intake → Part 7 → Manual Google Maps Links section, OR\n' +
+          '2. Provide business phone number and address\n\n' +
+          'Then try importing again.');
+        return;
+      }
 
-    if (!confirm(confirmMsg)) {
-      return;
+      const confirmMsg = `⚠️ No Google Maps URLs found.\n\n` +
+        `I can search for your business using:\n` +
+        `• Name: ${company.name}\n` +
+        `• Phone: ${company.phone || intake?.mainPhone || 'N/A'}\n` +
+        `• Address: ${company.address || intake?.physicalAddress || 'N/A'}\n\n` +
+        `💡 TIP: For better results, add Google Maps links manually in:\n` +
+        `Intake → Part 7 → Manual Google Maps Links\n\n` +
+        `Continue with smart search anyway?`;
+      
+      if (!confirm(confirmMsg)) {
+        return;
+      }
+    } else {
+      const confirmMsg = `🔍 Import Reviews from Google?\n\n` +
+        `Found ${uniqueUrls.length} Google URL${uniqueUrls.length > 1 ? 's' : ''}:\n\n` +
+        uniqueUrls.map((url, i) => `${i + 1}. ${url.substring(0, 50)}...`).join('\n') + '\n\n' +
+        `The system will:\n` +
+        `✓ Extract reviews from these URLs\n` +
+        `✓ Search by phone/address as backup\n` +
+        `✓ Import only 5-star reviews\n` +
+        `✓ Skip duplicates automatically\n\n` +
+        `Continue?`;
+
+      if (!confirm(confirmMsg)) {
+        return;
+      }
     }
 
     setIsImporting(true);
     setImportError('');
 
     try {
-      console.log('🚀 Starting comprehensive import...');
+      console.log('🚀 Starting import...');
 
       const response = await fetch('/api/import-google-reviews', {
         method: 'POST',
@@ -455,7 +530,7 @@ export function Reviews({ company }: ReviewsProps) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-slate-700">
           <div className="flex items-start gap-2">
             <span className="text-blue-600 font-bold">1.</span>
-            <span><strong>URL Analysis:</strong> Handles all Google Maps URL formats</span>
+            <span><strong>Manual Links:</strong> Prioritizes dedicated Google Maps fields in intake</span>
           </div>
           <div className="flex items-start gap-2">
             <span className="text-blue-600 font-bold">2.</span>
@@ -477,6 +552,11 @@ export function Reviews({ company }: ReviewsProps) {
             <span className="text-green-600 font-bold">✓</span>
             <span><strong>Auto-Dedupe:</strong> Skips duplicate reviews</span>
           </div>
+        </div>
+        <div className="mt-4 p-3 bg-white rounded border border-blue-200">
+          <p className="text-xs text-slate-600">
+            <strong>💡 Pro Tip:</strong> Add Google Maps links manually in Intake → Part 7 → Manual Google Maps Links for the most reliable results!
+          </p>
         </div>
       </Card>
     </div>

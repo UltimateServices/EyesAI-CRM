@@ -62,6 +62,13 @@ export interface Intake {
   tripadvisorInfo?: string;
   directProfiles?: string;
   
+  // NEW: Dedicated Google Maps Link Fields
+  googleMapsLink1?: string;
+  googleMapsLink2?: string;
+  googleMapsLink3?: string;
+  googleMapsLink4?: string;
+  googleMapsLink5?: string;
+  
   // Part 8 - Key Metrics & Differentiators
   quickFacts?: string;
   primarySeoKeywords?: string;
