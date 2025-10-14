@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Image as ImageIcon, Upload, X, Video, Loader2, Trash2 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 interface MediaGalleryProps {
   company: Company;
@@ -38,6 +38,12 @@ export default function MediaGallery({ company }: MediaGalleryProps) {
   }, [company.logoUrl]);
 
   const uploadToSupabase = async (file: File, folder: string): Promise<string | null> => {
+    if (!supabase || !isSupabaseConfigured()) {
+      console.error('Supabase not configured');
+      alert('Storage not configured. Please contact administrator.');
+      return null;
+    }
+
     const fileName = `${folder}/${company.id}/${Date.now()}_${file.name}`;
     
     const { error } = await supabase.storage
@@ -175,6 +181,14 @@ export default function MediaGallery({ company }: MediaGalleryProps) {
 
   return (
     <div className="space-y-6">
+      {!isSupabaseConfigured() && (
+        <Card className="p-4 bg-yellow-50 border-yellow-200">
+          <p className="text-sm text-yellow-800">
+            ⚠️ Storage not configured. Media uploads are disabled.
+          </p>
+        </Card>
+      )}
+
       {/* Logo Section */}
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-4">
@@ -190,7 +204,7 @@ export default function MediaGallery({ company }: MediaGalleryProps) {
               accept="image/*"
               onChange={handleLogoFileSelect}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg"
-              disabled={logoUploading}
+              disabled={logoUploading || !isSupabaseConfigured()}
             />
           </div>
 
@@ -260,8 +274,16 @@ export default function MediaGallery({ company }: MediaGalleryProps) {
               <Upload className="w-12 h-12 text-slate-400 mx-auto mb-3" />
               <p className="text-slate-700 font-medium mb-2">Drag & drop images here</p>
               <p className="text-sm text-slate-500 mb-4">or click to browse</p>
-              <input type="file" multiple accept="image/*" onChange={handlePhotosSelect} className="hidden" id="photo-upload" />
-              <Button asChild variant="outline" size="sm">
+              <input 
+                type="file" 
+                multiple 
+                accept="image/*" 
+                onChange={handlePhotosSelect} 
+                className="hidden" 
+                id="photo-upload"
+                disabled={!isSupabaseConfigured()}
+              />
+              <Button asChild variant="outline" size="sm" disabled={!isSupabaseConfigured()}>
                 <label htmlFor="photo-upload" className="cursor-pointer">Browse Files</label>
               </Button>
             </>
@@ -308,8 +330,16 @@ export default function MediaGallery({ company }: MediaGalleryProps) {
               <Video className="w-12 h-12 text-slate-400 mx-auto mb-3" />
               <p className="text-slate-700 font-medium mb-2">Drag & drop videos here</p>
               <p className="text-sm text-slate-500 mb-4">or click to browse</p>
-              <input type="file" multiple accept="video/*" onChange={handleVideosSelect} className="hidden" id="video-upload" />
-              <Button asChild variant="outline" size="sm">
+              <input 
+                type="file" 
+                multiple 
+                accept="video/*" 
+                onChange={handleVideosSelect} 
+                className="hidden" 
+                id="video-upload"
+                disabled={!isSupabaseConfigured()}
+              />
+              <Button asChild variant="outline" size="sm" disabled={!isSupabaseConfigured()}>
                 <label htmlFor="video-upload" className="cursor-pointer">Browse Files</label>
               </Button>
             </>
