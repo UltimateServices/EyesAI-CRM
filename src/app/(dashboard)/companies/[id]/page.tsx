@@ -8,8 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CompanyOverview } from '@/components/company/company-overview';
 import { IntakeForm } from '@/components/company/intake-form';
-import { MediaGallery } from '@/components/company/media-gallery';
-import { Reviews } from '@/components/company/reviews';
+import MediaGallery from '@/components/company/media-gallery';
 import { 
   ArrowLeft, 
   Building2, 
@@ -43,7 +42,7 @@ export default function CompanyDetailPage() {
 
   if (!company) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <Building2 className="w-16 h-16 text-slate-300 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-slate-900 mb-2">Company Not Found</h2>
@@ -66,85 +65,74 @@ export default function CompanyDetailPage() {
   };
 
   const handleDelete = () => {
-    if (confirm(`Are you sure you want to delete ${company.name}? This action cannot be undone.`)) {
-      deleteCompany(companyId);
+    if (confirm(`Are you sure you want to delete ${company.name}?`)) {
+      deleteCompany(company.id);
       router.push('/dashboard');
     }
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" asChild>
-          <Link href="/dashboard">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Dashboard
-          </Link>
-        </Button>
-      </div>
+    <div className="p-6 max-w-[1800px] mx-auto space-y-6">
+      <Button variant="ghost" size="sm" asChild>
+        <Link href="/dashboard">
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Dashboard
+        </Link>
+      </Button>
 
-      {/* Company Header */}
       <Card className="p-6">
         <div className="flex items-start justify-between">
-          <div className="flex items-start gap-6">
-            <div className="w-24 h-24 rounded-lg bg-slate-100 flex items-center justify-center overflow-hidden">
+          <div className="flex items-start gap-4">
+            <div className="w-16 h-16 rounded-lg overflow-hidden bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-2xl font-bold flex-shrink-0">
               {company.logoUrl ? (
                 <img src={company.logoUrl} alt={company.name} className="w-full h-full object-cover" />
               ) : (
-                <Building2 className="w-12 h-12 text-slate-400" />
+                <span>{(intake?.officialName || company.name).charAt(0)}</span>
               )}
             </div>
 
             <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2">
-                <h1 className="text-3xl font-bold text-slate-900">{company.name}</h1>
-                <Badge variant="secondary" className={getStatusColor(company.status)}>
+              <h1 className="text-2xl font-bold text-slate-900 mb-2">
+                {intake?.officialName || company.name}
+              </h1>
+
+              <div className="flex items-center gap-2 mb-3">
+                <Badge className={getStatusColor(company.status)}>
                   {company.status}
                 </Badge>
-                <Badge variant="secondary">{company.plan}</Badge>
+                <Badge variant="outline">{company.plan}</Badge>
+                {company.assignedVaName && (
+                  <Badge variant="secondary">{company.assignedVaName}</Badge>
+                )}
               </div>
 
-              {company.website && (
-                <a 
-                  href={company.website} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:underline flex items-center gap-1 mb-3"
-                >
-                  <Globe className="w-4 h-4" />
-                  {company.website}
-                </a>
-              )}
-
-              <div className="flex flex-wrap items-center gap-4 text-sm text-slate-600">
-                {company.contactEmail && (
+              <div className="space-y-1 text-sm text-slate-600">
+                {(intake?.website || company.website) && (
                   <div className="flex items-center gap-2">
-                    <Mail className="w-4 h-4" />
-                    {company.contactEmail}
+                    <Globe className="w-4 h-4" />
+                    <a 
+                      href={intake?.website || company.website} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="hover:text-blue-600"
+                    >
+                      {intake?.website || company.website}
+                    </a>
                   </div>
                 )}
-                {company.phone && (
+                {(intake?.mainPhone || company.phone) && (
                   <div className="flex items-center gap-2">
                     <Phone className="w-4 h-4" />
-                    {company.phone}
+                    {intake?.mainPhone || company.phone}
                   </div>
                 )}
-                {company.address && (
+                {(intake?.physicalAddress || company.address) && (
                   <div className="flex items-center gap-2">
                     <MapPin className="w-4 h-4" />
-                    {company.address}
+                    {intake?.physicalAddress || company.address}
                   </div>
                 )}
               </div>
-
-              {intake && intake.status === 'complete' && (intake.verifiedFiveStarTotal || intake.googleReviewsTotal) && (
-                <div className="flex items-center gap-2 mt-3 text-sm">
-                  <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                  <span className="font-medium text-slate-900">
-                    {intake.verifiedFiveStarTotal || intake.googleReviewsTotal}
-                  </span>
-                </div>
-              )}
             </div>
           </div>
 
@@ -173,13 +161,11 @@ export default function CompanyDetailPage() {
         </div>
       </Card>
 
-      {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="intake">Intake</TabsTrigger>
           <TabsTrigger value="media">Media</TabsTrigger>
-          <TabsTrigger value="reviews">Reviews</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-6">
@@ -192,10 +178,6 @@ export default function CompanyDetailPage() {
 
         <TabsContent value="media" className="mt-6">
           <MediaGallery company={company} />
-        </TabsContent>
-
-        <TabsContent value="reviews" className="mt-6">
-          <Reviews company={company} />
         </TabsContent>
       </Tabs>
     </div>
