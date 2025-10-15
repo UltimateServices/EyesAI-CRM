@@ -18,7 +18,6 @@ export function Reviews({ company }: ReviewsProps) {
   const allReviews = useStore((state) => state.reviews);
   const fetchReviews = useStore((state) => state.fetchReviews);
   const addReview = useStore((state) => state.addReview);
-  const deleteReview = useStore((state) => state.deleteReview);
   const getIntakeByCompanyId = useStore((state) => state.getIntakeByCompanyId);
   const saveIntake = useStore((state) => state.saveIntake);
   const intake = getIntakeByCompanyId(company.id);
@@ -35,11 +34,11 @@ export function Reviews({ company }: ReviewsProps) {
 
   const [formData, setFormData] = useState({
     rating: 5 as 1 | 2 | 3 | 4 | 5,
-    reviewerName: '',
-    reviewText: '',
-    reviewDate: new Date().toISOString().split('T')[0],
+    author: '',
+    text: '',
+    date: new Date().toISOString().split('T')[0],
     platform: 'Google' as 'Google' | 'Yelp' | 'Facebook' | 'TripAdvisor' | 'Other',
-    reviewUrl: '',
+    url: '',
   });
 
   // Fetch reviews on mount
@@ -62,7 +61,7 @@ export function Reviews({ company }: ReviewsProps) {
   }
 
   const handleAddReview = async () => {
-    if (!formData.reviewerName.trim() || !formData.reviewText.trim()) {
+    if (!formData.author.trim() || !formData.text.trim()) {
       alert('Please fill in reviewer name and review text');
       return;
     }
@@ -70,33 +69,24 @@ export function Reviews({ company }: ReviewsProps) {
     await addReview({
       companyId: company.id,
       rating: formData.rating,
-      reviewerName: formData.reviewerName.trim(),
-      reviewText: formData.reviewText.trim(),
-      reviewDate: formData.reviewDate,
+      author: formData.author.trim(),
+      text: formData.text.trim(),
+      date: formData.date,
       platform: formData.platform,
-      reviewUrl: formData.reviewUrl.trim() || '',
-      response: '',
-      responseDate: '',
+      url: formData.url.trim() || '',
     });
 
     setFormData({
       rating: 5,
-      reviewerName: '',
-      reviewText: '',
-      reviewDate: new Date().toISOString().split('T')[0],
+      author: '',
+      text: '',
+      date: new Date().toISOString().split('T')[0],
       platform: 'Google',
-      reviewUrl: '',
+      url: '',
     });
     
     setShowAddForm(false);
     alert('✅ Review added successfully!');
-  };
-
-  const handleDeleteReview = async (reviewId: string) => {
-    if (confirm('Are you sure you want to delete this review?')) {
-      await deleteReview(reviewId);
-      alert('✅ Review deleted!');
-    }
   };
 
   const handleImportGoogleReviews = async () => {
@@ -115,14 +105,14 @@ export function Reviews({ company }: ReviewsProps) {
           companyId: company.id,
           companyName: company.name,
           existingUrls: {
-            google: intake?.googleMapsLink1 || null,
-            yelp: intake?.yelpUrl || null,
-            facebook: intake?.facebookUrl || null,
+            google: company.googleMapsUrl || null,
+            yelp: company.yelpUrl || null,
+            facebook: company.facebookUrl || null,
           },
           companyDetails: {
-            address: intake?.physicalAddress || company.address || '',
-            phone: intake?.mainPhone || company.phone || '',
-            website: intake?.website || company.website || '',
+            address: company.address || '',
+            phone: company.phone || '',
+            website: company.website || '',
           },
         }),
       });
@@ -165,7 +155,7 @@ export function Reviews({ company }: ReviewsProps) {
                 if (data.complete && data.reviews) {
                   console.log('Import complete! Converting reviews...', data.reviews);
                   
-                  const existingTexts = new Set(reviews.map(r => r.reviewText.toLowerCase().trim()));
+                  const existingTexts = new Set(reviews.map(r => r.text?.toLowerCase().trim() || ''));
                   let importedCount = 0;
 
                   // Add each new review to Supabase
@@ -174,27 +164,14 @@ export function Reviews({ company }: ReviewsProps) {
                       await addReview({
                         companyId: company.id,
                         rating: r.rating as 1 | 2 | 3 | 4 | 5,
-                        reviewerName: r.author,
-                        reviewText: r.text,
-                        reviewDate: r.date,
+                        author: r.author,
+                        text: r.text,
+                        date: r.date,
                         platform: (r.platform.charAt(0).toUpperCase() + r.platform.slice(1)) as 'Google' | 'Yelp' | 'Facebook',
-                        reviewUrl: r.url || '',
-                        response: '',
-                        responseDate: '',
+                        url: r.url || '',
                       });
                       importedCount++;
                     }
-                  }
-
-                  // Update intake with found URLs
-                  if (data.foundUrls && intake) {
-                    await saveIntake({
-                      ...intake,
-                      googleMapsLink1: data.foundUrls.google || intake.googleMapsLink1,
-                      yelpUrl: data.foundUrls.yelp || intake.yelpUrl,
-                      facebookUrl: data.foundUrls.facebook || intake.facebookUrl,
-                      updatedAt: new Date().toISOString(),
-                    });
                   }
 
                   // Refresh reviews to update UI
@@ -229,17 +206,17 @@ export function Reviews({ company }: ReviewsProps) {
   const filteredReviews = filterFiveStarOnly ? reviews.filter(r => r.rating === 5) : reviews;
   
   const sortedReviews = [...filteredReviews].sort((a, b) => {
-    const dateA = new Date(a.reviewDate).getTime();
-    const dateB = new Date(b.reviewDate).getTime();
+    const dateA = a.date ? new Date(a.date).getTime() : 0;
+    const dateB = b.date ? new Date(b.date).getTime() : 0;
     
     if (sortOrder === 'newest') {
-      return dateB - dateA; // Newest first
+      return dateB - dateA;
     } else {
-      return dateA - dateB; // Oldest first
+      return dateA - dateB;
     }
   });
 
-  const averageRating = reviews.length > 0 ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1) : '0.0';
+  const averageRating = reviews.length > 0 ? (reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / reviews.length).toFixed(1) : '0.0';
   const fiveStarCount = reviews.filter(r => r.rating === 5).length;
 
   return (
@@ -335,19 +312,19 @@ export function Reviews({ company }: ReviewsProps) {
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Reviewer Name</label>
-              <input type="text" value={formData.reviewerName} onChange={(e) => setFormData({ ...formData, reviewerName: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="John Smith" />
+              <input type="text" value={formData.author} onChange={(e) => setFormData({ ...formData, author: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="John Smith" />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Review Date</label>
-              <input type="date" value={formData.reviewDate} onChange={(e) => setFormData({ ...formData, reviewDate: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+              <input type="date" value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-2">Review URL (optional)</label>
-              <input type="url" value={formData.reviewUrl} onChange={(e) => setFormData({ ...formData, reviewUrl: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="https://google.com/maps" />
+              <input type="url" value={formData.url} onChange={(e) => setFormData({ ...formData, url: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="https://google.com/maps" />
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-2">Review Text</label>
-              <textarea value={formData.reviewText} onChange={(e) => setFormData({ ...formData, reviewText: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" rows={4} placeholder="Great service! Highly recommend..." />
+              <textarea value={formData.text} onChange={(e) => setFormData({ ...formData, text: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" rows={4} placeholder="Great service! Highly recommend..." />
             </div>
           </div>
           <div className="flex justify-end gap-2 mt-4">
@@ -404,39 +381,42 @@ export function Reviews({ company }: ReviewsProps) {
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold text-lg">
-                    {(review.reviewerName || 'Unknown').charAt(0).toUpperCase()}
+                    {(review.author || 'U').charAt(0).toUpperCase()}
                   </div>
                   <div>
                     <div className="flex items-center gap-2 mb-1">
-                      <h4 className="font-semibold text-slate-900">{review.reviewerName || 'Unknown'}</h4>
-                      <Badge variant="secondary" className="text-xs">{review.platform}</Badge>
+                      <h4 className="font-semibold text-slate-900">{review.author || 'Anonymous'}</h4>
+                      {review.platform && <Badge variant="secondary" className="text-xs">{review.platform}</Badge>}
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="flex gap-0.5">
                         {[1, 2, 3, 4, 5].map((star) => (
-                          <Star key={star} className={star <= review.rating ? 'w-4 h-4 text-yellow-500 fill-yellow-500' : 'w-4 h-4 text-slate-300'} />
+                          <Star key={star} className={star <= (review.rating || 0) ? 'w-4 h-4 text-yellow-500 fill-yellow-500' : 'w-4 h-4 text-slate-300'} />
                         ))}
                       </div>
-                      <span className="text-xs text-slate-500">•</span>
-                      <div className="flex items-center gap-1 text-xs text-slate-500">
-                        <Calendar className="w-3 h-3" />
-                        {new Date(review.reviewDate).toLocaleDateString()}
-                      </div>
+                      {review.date && (
+                        <>
+                          <span className="text-xs text-slate-500">•</span>
+                          <div className="flex items-center gap-1 text-xs text-slate-500">
+                            <Calendar className="w-3 h-3" />
+                            {new Date(review.date).toLocaleDateString('en-US', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric'
+                            })}
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {review.reviewUrl && (
-                    <a href={review.reviewUrl} target="_blank" rel="noopener noreferrer" className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                      <ExternalLink className="w-4 h-4" />
-                    </a>
-                  )}
-                  <button type="button" onClick={() => handleDeleteReview(review.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
+                {review.url && (
+                  <a href={review.url} target="_blank" rel="noopener noreferrer" className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
+                )}
               </div>
-              <p className="text-slate-700 leading-relaxed">{review.reviewText}</p>
+              <p className="text-slate-700 leading-relaxed">{review.text}</p>
             </Card>
           ))
         ) : (
