@@ -1,7 +1,14 @@
 import { NextRequest } from 'next/server';
 
+const APIFY_API_TOKEN = process.env.APIFY_API_TOKEN;
 const SERPER_API_KEY = process.env.SERPER_API_KEY;
-const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY;
+
+// Configurable limits
+const REVIEW_LIMITS = {
+  google: 20,      // Premium Apify scraping
+  yelp: 10,        // Free Serper scraping
+  facebook: 10,    // Free Serper scraping
+};
 
 interface Review {
   id: string;
@@ -24,7 +31,12 @@ export async function POST(request: NextRequest) {
       };
 
       try {
-        sendLog(`🚀 Starting Smart Import for: ${companyName}`);
+        sendLog(`🚀 Hybrid Import for: ${companyName}`);
+        sendLog(`📊 Strategy: Premium Google + Free Yelp/Facebook`);
+
+        if (!SERPER_API_KEY) {
+          throw new Error('Serper API key required');
+        }
 
         const allReviews: Review[] = [];
         const foundUrls: any = {
@@ -33,197 +45,138 @@ export async function POST(request: NextRequest) {
           facebook: null,
         };
 
-        if (!SERPER_API_KEY) {
-          sendLog('❌ SERPER_API_KEY not found!');
-          throw new Error('Serper API key not configured. Please add SERPER_API_KEY to .env.local');
-        }
-
-        sendLog(`✅ Serper API key detected`);
-
         // ========================================
-        // GOOGLE - Just search like a human would
+        // GOOGLE REVIEWS - PREMIUM APIFY
         // ========================================
         sendLog('');
-        sendLog('🔍 GOOGLE: Searching...');
-        
-        const googleSearchQuery = `${companyName} ${companyDetails?.address || ''} Google Maps`.trim();
-        sendLog(`   Query: "${googleSearchQuery}"`);
+        sendLog('═══════════════════════════════════');
+        sendLog('📍 GOOGLE MAPS (Premium Apify)');
+        sendLog('═══════════════════════════════════');
 
-        try {
-          const googleSearch = await fetch('https://google.serper.dev/search', {
-            method: 'POST',
-            headers: {
-              'X-API-KEY': SERPER_API_KEY,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              q: googleSearchQuery,
-              num: 10,
-            }),
-          });
+        if (APIFY_API_TOKEN) {
+          try {
+            let googleUrl = existingUrls?.google;
 
-          if (!googleSearch.ok) {
-            throw new Error(`Serper returned ${googleSearch.status}`);
-          }
+            // Find Google Maps URL if not provided
+            if (!googleUrl) {
+              sendLog('🔍 Finding Google Maps listing...');
+              const searchQuery = companyDetails?.address
+                ? `${companyName} ${companyDetails.address} Google Maps`
+                : `${companyName} Google Maps`;
 
-          const googleData = await googleSearch.json();
-          sendLog(`   ✓ Serper response received`);
+              const searchResponse = await fetch('https://google.serper.dev/search', {
+                method: 'POST',
+                headers: {
+                  'X-API-KEY': SERPER_API_KEY,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ q: searchQuery, num: 5 }),
+              });
 
-          // Find Google Maps URL
-          let googleMapsUrl = null;
-          if (googleData.organic) {
-            for (const result of googleData.organic) {
-              if (result.link && (result.link.includes('google.com/maps') || result.link.includes('maps.google.com'))) {
-                googleMapsUrl = result.link;
-                foundUrls.google = googleMapsUrl;
-                sendLog(`   ✅ Found Google Maps URL!`);
-                break;
+              const searchData = await searchResponse.json();
+
+              if (searchData.organic) {
+                for (const result of searchData.organic) {
+                  if (result.link && (result.link.includes('google.com/maps') || result.link.includes('maps.google.com'))) {
+                    googleUrl = result.link;
+                    foundUrls.google = googleUrl;
+                    sendLog(`✅ Found: ${googleUrl.substring(0, 60)}...`);
+                    break;
+                  }
+                }
               }
             }
-          }
 
-          // If we have a Google Maps URL, try to get reviews via Places API
-          if (googleMapsUrl) {
-            const placeId = extractPlaceId(googleMapsUrl);
-            
-            if (placeId && GOOGLE_PLACES_API_KEY) {
-              sendLog(`   🔑 Extracted Place ID, fetching reviews...`);
-              
-              const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,reviews,rating,user_ratings_total,formatted_address&key=${GOOGLE_PLACES_API_KEY}`;
-              const detailsResponse = await fetch(detailsUrl);
-              const detailsData = await detailsResponse.json();
+            if (googleUrl) {
+              sendLog(`🔑 Launching Apify scraper (${REVIEW_LIMITS.google} reviews)...`);
 
-              if (detailsData.status === 'OK' && detailsData.result?.reviews) {
-                sendLog(`   ✅ ${detailsData.result.name}`);
-                sendLog(`   ✅ ${detailsData.result.formatted_address}`);
-                sendLog(`   ✅ Found ${detailsData.result.reviews.length} reviews via Places API`);
+              const googleReviews = await scrapeGoogleWithApify(
+                companyName,
+                googleUrl,
+                REVIEW_LIMITS.google,
+                sendLog
+              );
 
-                const googleReviews = detailsData.result.reviews.map((review: any) => ({
-                  id: `google-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                  author: review.author_name || 'Google User',
-                  rating: review.rating || 5,
-                  text: review.text || '',
-                  date: review.time ? new Date(review.time * 1000).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-                  platform: 'google',
-                  url: googleMapsUrl,
-                }));
-
+              if (googleReviews.length > 0) {
                 allReviews.push(...googleReviews);
+                sendLog(`✅ ${googleReviews.length} Google reviews scraped`);
               } else {
-                sendLog(`   ⚠️ Places API: ${detailsData.status}`);
+                sendLog('⚠️ No Google reviews found');
               }
+            } else {
+              sendLog('⚠️ Could not find Google Maps listing');
             }
+          } catch (error: any) {
+            sendLog(`❌ Google error: ${error.message}`);
           }
-
-          // Scrape reviews from search results as backup
-          if (allReviews.filter(r => r.platform === 'google').length === 0) {
-            sendLog(`   🌐 Extracting reviews from search results...`);
-            const scrapedReviews = extractReviewsFromSerper(googleData, 'google', googleMapsUrl);
-            if (scrapedReviews.length > 0) {
-              allReviews.push(...scrapedReviews);
-              sendLog(`   ✅ Extracted ${scrapedReviews.length} reviews from snippets`);
-            }
-          }
-
-        } catch (error: any) {
-          sendLog(`   ❌ Error: ${error.message}`);
+        } else {
+          sendLog('⚠️ Apify token not configured - skipping Google');
         }
 
         // ========================================
-        // YELP - Search like a human
+        // YELP REVIEWS - FREE SERPER SCRAPING
         // ========================================
         sendLog('');
-        sendLog('🔍 YELP: Searching...');
-        
-        const cityState = companyDetails?.address ? extractCityState(companyDetails.address) : '';
-        const yelpSearchQuery = `${companyName} ${cityState} Yelp`.trim();
-        sendLog(`   Query: "${yelpSearchQuery}"`);
+        sendLog('═══════════════════════════════════');
+        sendLog('📍 YELP (Free Serper Scraping)');
+        sendLog('═══════════════════════════════════');
 
         try {
-          const yelpSearch = await fetch('https://google.serper.dev/search', {
-            method: 'POST',
-            headers: {
-              'X-API-KEY': SERPER_API_KEY,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              q: yelpSearchQuery,
-              num: 10,
-            }),
-          });
+          const cityState = companyDetails?.address ? extractCityState(companyDetails.address) : '';
+          const yelpQuery = cityState
+            ? `${companyName} ${cityState} Yelp reviews`
+            : `${companyName} Yelp reviews`;
 
-          const yelpData = await yelpSearch.json();
+          sendLog(`🔍 Searching: "${yelpQuery}"`);
 
-          // Find Yelp URL
-          if (yelpData.organic) {
-            for (const result of yelpData.organic) {
-              if (result.link && result.link.includes('yelp.com')) {
-                foundUrls.yelp = result.link;
-                sendLog(`   ✅ Found Yelp URL!`);
-                break;
-              }
-            }
+          const yelpResults = await scrapeWithSerper(yelpQuery, 'yelp', REVIEW_LIMITS.yelp, sendLog);
+
+          if (yelpResults.url) {
+            foundUrls.yelp = yelpResults.url;
+            sendLog(`✅ Found Yelp: ${yelpResults.url.substring(0, 50)}...`);
           }
 
-          // Extract reviews
-          const yelpReviews = extractReviewsFromSerper(yelpData, 'yelp', foundUrls.yelp);
-          if (yelpReviews.length > 0) {
-            allReviews.push(...yelpReviews);
-            sendLog(`   ✅ Extracted ${yelpReviews.length} reviews`);
+          if (yelpResults.reviews.length > 0) {
+            allReviews.push(...yelpResults.reviews);
+            sendLog(`✅ ${yelpResults.reviews.length} Yelp reviews extracted`);
           } else {
-            sendLog(`   ⚠️ No reviews found`);
+            sendLog('⚠️ No Yelp reviews found');
           }
-
         } catch (error: any) {
-          sendLog(`   ❌ Error: ${error.message}`);
+          sendLog(`❌ Yelp error: ${error.message}`);
         }
 
         // ========================================
-        // FACEBOOK - Search like a human
+        // FACEBOOK REVIEWS - FREE SERPER SCRAPING
         // ========================================
         sendLog('');
-        sendLog('🔍 FACEBOOK: Searching...');
-        
-        const fbSearchQuery = `${companyName} ${cityState} Facebook`.trim();
-        sendLog(`   Query: "${fbSearchQuery}"`);
+        sendLog('═══════════════════════════════════');
+        sendLog('📍 FACEBOOK (Free Serper Scraping)');
+        sendLog('═══════════════════════════════════');
 
         try {
-          const fbSearch = await fetch('https://google.serper.dev/search', {
-            method: 'POST',
-            headers: {
-              'X-API-KEY': SERPER_API_KEY,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              q: fbSearchQuery,
-              num: 10,
-            }),
-          });
+          const cityState = companyDetails?.address ? extractCityState(companyDetails.address) : '';
+          const fbQuery = cityState
+            ? `${companyName} ${cityState} Facebook reviews`
+            : `${companyName} Facebook reviews`;
 
-          const fbData = await fbSearch.json();
+          sendLog(`🔍 Searching: "${fbQuery}"`);
 
-          // Find Facebook URL
-          if (fbData.organic) {
-            for (const result of fbData.organic) {
-              if (result.link && result.link.includes('facebook.com')) {
-                foundUrls.facebook = result.link;
-                sendLog(`   ✅ Found Facebook URL!`);
-                break;
-              }
-            }
+          const fbResults = await scrapeWithSerper(fbQuery, 'facebook', REVIEW_LIMITS.facebook, sendLog);
+
+          if (fbResults.url) {
+            foundUrls.facebook = fbResults.url;
+            sendLog(`✅ Found Facebook: ${fbResults.url.substring(0, 50)}...`);
           }
 
-          // Extract reviews
-          const fbReviews = extractReviewsFromSerper(fbData, 'facebook', foundUrls.facebook);
-          if (fbReviews.length > 0) {
-            allReviews.push(...fbReviews);
-            sendLog(`   ✅ Extracted ${fbReviews.length} reviews`);
+          if (fbResults.reviews.length > 0) {
+            allReviews.push(...fbResults.reviews);
+            sendLog(`✅ ${fbResults.reviews.length} Facebook reviews extracted`);
           } else {
-            sendLog(`   ⚠️ No reviews found`);
+            sendLog('⚠️ No Facebook reviews found');
           }
-
         } catch (error: any) {
-          sendLog(`   ❌ Error: ${error.message}`);
+          sendLog(`❌ Facebook error: ${error.message}`);
         }
 
         // ========================================
@@ -231,12 +184,12 @@ export async function POST(request: NextRequest) {
         // ========================================
         sendLog('');
         sendLog('═══════════════════════════════════');
-        sendLog('🎉 IMPORT COMPLETE');
+        sendLog('🎉 HYBRID IMPORT COMPLETE');
         sendLog('═══════════════════════════════════');
         sendLog(`📊 Total: ${allReviews.length} reviews`);
-        sendLog(`   - Google: ${allReviews.filter(r => r.platform === 'google').length}`);
-        sendLog(`   - Yelp: ${allReviews.filter(r => r.platform === 'yelp').length}`);
-        sendLog(`   - Facebook: ${allReviews.filter(r => r.platform === 'facebook').length}`);
+        sendLog(`   - Google: ${allReviews.filter(r => r.platform === 'google').length} (Premium)`);
+        sendLog(`   - Yelp: ${allReviews.filter(r => r.platform === 'yelp').length} (Free)`);
+        sendLog(`   - Facebook: ${allReviews.filter(r => r.platform === 'facebook').length} (Free)`);
 
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
           complete: true,
@@ -267,71 +220,172 @@ export async function POST(request: NextRequest) {
   });
 }
 
-function extractPlaceId(url: string): string | null {
-  const patterns = [
-    /place_id=([A-Za-z0-9_-]+)/,
-    /!1s([A-Za-z0-9_-]+)(?:!|$)/,
-    /ftid=([A-Za-z0-9_:]+)/,
-  ];
+// ========================================
+// APIFY GOOGLE MAPS SCRAPER
+// ========================================
+async function scrapeGoogleWithApify(
+  businessName: string,
+  url: string,
+  limit: number,
+  sendLog: (msg: string) => void
+): Promise<Review[]> {
+  try {
+    // Start Apify actor
+    const actorRunResponse = await fetch(
+      `https://api.apify.com/v2/acts/compass~crawler-google-places/runs?token=${APIFY_API_TOKEN}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          searchStringsArray: [businessName],
+          maxCrawledPlaces: 1,
+          language: 'en',
+          maxReviews: limit,
+          reviewsSort: 'newest',
+          scrapeReviewerName: true,
+          scrapeReviewId: true,
+          scrapeReviewUrl: true,
+          scrapeReviewDate: true,
+        }),
+      }
+    );
 
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match) return match[1];
+    if (!actorRunResponse.ok) {
+      throw new Error(`Apify API returned ${actorRunResponse.status}`);
+    }
+
+    const runData = await actorRunResponse.json();
+    const runId = runData.data.id;
+
+    sendLog(`   ⏳ Run ID: ${runId}`);
+
+    // Wait for completion
+    let status = 'RUNNING';
+    let attempts = 0;
+    
+    while (status === 'RUNNING' && attempts < 60) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const statusResponse = await fetch(
+        `https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_API_TOKEN}`
+      );
+      const statusData = await statusResponse.json();
+      status = statusData.data.status;
+      
+      attempts++;
+      if (attempts % 5 === 0) {
+        sendLog(`   ⏳ Scraping... ${attempts * 2}s`);
+      }
+    }
+
+    if (status !== 'SUCCEEDED') {
+      throw new Error(`Scraping ${status}`);
+    }
+
+    sendLog(`   ✓ Completed in ${attempts * 2}s`);
+
+    // Get results
+    const resultsResponse = await fetch(
+      `https://api.apify.com/v2/actor-runs/${runId}/dataset/items?token=${APIFY_API_TOKEN}`
+    );
+    const results = await resultsResponse.json();
+
+    const reviews: Review[] = [];
+    
+    for (const item of results) {
+      if (item.reviews) {
+        for (const review of item.reviews.slice(0, limit)) {
+          reviews.push({
+            id: `google-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            author: review.name || 'Google User',
+            rating: review.stars || 5,
+            text: review.text || review.textTranslated || '',
+            date: review.publishedAtDate ? review.publishedAtDate.split('T')[0] : new Date().toISOString().split('T')[0],
+            platform: 'google',
+            url: url,
+          });
+        }
+      }
+    }
+
+    return reviews;
+  } catch (error: any) {
+    sendLog(`   ✗ ${error.message}`);
+    return [];
   }
-
-  return null;
 }
 
-function extractReviewsFromSerper(data: any, platform: string, url: string | null): Review[] {
-  const reviews: Review[] = [];
+// ========================================
+// SERPER SCRAPING (Yelp & Facebook)
+// ========================================
+async function scrapeWithSerper(
+  query: string,
+  platform: string,
+  limit: number,
+  sendLog: (msg: string) => void
+): Promise<{ reviews: Review[]; url: string | null }> {
+  try {
+    const response = await fetch('https://google.serper.dev/search', {
+      method: 'POST',
+      headers: {
+        'X-API-KEY': SERPER_API_KEY!,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        q: query,
+        num: 20,
+      }),
+    });
 
-  // Check knowledge graph
-  if (data.knowledgeGraph?.reviews) {
-    for (const review of data.knowledgeGraph.reviews) {
-      reviews.push({
-        id: `${platform}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        author: review.author || `${capitalize(platform)} User`,
-        rating: review.rating || 5,
-        text: review.snippet || review.text || '',
-        date: review.date || new Date().toISOString().split('T')[0],
-        platform: platform,
-        url: url || '',
-      });
+    const data = await response.json();
+    const reviews: Review[] = [];
+    let url: string | null = null;
+
+    // Get URL from first result
+    if (data.organic?.[0]?.link) {
+      const link = data.organic[0].link;
+      if ((platform === 'yelp' && link.includes('yelp.com')) ||
+          (platform === 'facebook' && link.includes('facebook.com'))) {
+        url = link;
+      }
     }
-  }
 
-  // Extract from organic results
-  if (data.organic) {
-    for (const result of data.organic) {
-      if (result.snippet && result.snippet.length > 50) {
-        const ratingMatch = result.snippet.match(/(\d)(?:\.\d)?\s*(?:star|★|stars)/i);
-        
-        if (ratingMatch) {
-          const rating = parseInt(ratingMatch[1]);
-          const text = cleanReviewText(result.snippet);
+    // Extract reviews from snippets
+    if (data.organic) {
+      for (const result of data.organic) {
+        if (result.snippet && result.snippet.length > 50 && reviews.length < limit) {
+          const ratingMatch = result.snippet.match(/(\d)(?:\.\d)?\s*(?:star|★|stars)/i);
           
-          if (text.length > 30) {
-            reviews.push({
-              id: `${platform}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-              author: extractAuthorName(result.snippet) || `${capitalize(platform)} User`,
-              rating: rating,
-              text: text,
-              date: extractDate(result.snippet) || new Date().toISOString().split('T')[0],
-              platform: platform,
-              url: url || result.link,
-            });
+          if (ratingMatch) {
+            const rating = parseInt(ratingMatch[1]);
+            const text = cleanReviewText(result.snippet);
+            
+            if (text.length > 30) {
+              reviews.push({
+                id: `${platform}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                author: extractAuthorName(result.snippet) || `${capitalize(platform)} User`,
+                rating: rating,
+                text: text,
+                date: extractDate(result.snippet) || new Date().toISOString().split('T')[0],
+                platform: platform,
+                url: url || result.link,
+              });
+            }
           }
         }
       }
     }
+
+    return { reviews: reviews.slice(0, limit), url };
+  } catch (error: any) {
+    sendLog(`   ✗ ${error.message}`);
+    return { reviews: [], url: null };
   }
-
-  return reviews.slice(0, 20);
 }
 
-function capitalize(str: string): string {
-  return str.charAt(0).toUpperCase() + str.slice(1);
-}
+// ========================================
+// HELPER FUNCTIONS
+// ========================================
 
 function extractCityState(address: string): string {
   const parts = address.split(',').map(p => p.trim());
@@ -339,6 +393,10 @@ function extractCityState(address: string): string {
     return parts.slice(-2).join(', ');
   }
   return '';
+}
+
+function capitalize(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
 function extractAuthorName(text: string): string | null {
@@ -376,7 +434,7 @@ function extractDate(text: string): string | null {
     }
   }
 
-  return new Date().toISOString().split('T')[0];
+  return null;
 }
 
 function cleanReviewText(text: string): string {
