@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useStore } from '@/lib/store';
 import { useHydration } from '@/hooks/useHydration';
-import { Company, Review } from '@/lib/types';
+import { Company } from '@/lib/types';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,29 +15,44 @@ interface ReviewsProps {
 
 export function Reviews({ company }: ReviewsProps) {
   const hydrated = useHydration();
+  const allReviews = useStore((state) => state.reviews);
+  const fetchReviews = useStore((state) => state.fetchReviews);
+  const addReview = useStore((state) => state.addReview);
+  const deleteReview = useStore((state) => state.deleteReview);
   const getIntakeByCompanyId = useStore((state) => state.getIntakeByCompanyId);
   const saveIntake = useStore((state) => state.saveIntake);
   const intake = getIntakeByCompanyId(company.id);
   
-  // Read directly from intake - no local state copy!
-  const reviews = intake?.reviews || [];
+  // Filter reviews for this company only
+  const reviews = allReviews.filter(r => r.companyId === company.id);
   
   const [showAddForm, setShowAddForm] = useState(false);
   const [filterFiveStarOnly, setFilterFiveStarOnly] = useState(true);
   const [isImporting, setIsImporting] = useState(false);
   const [importError, setImportError] = useState('');
+  const [loading, setLoading] = useState(true);
 
   const [formData, setFormData] = useState({
     rating: 5 as 1 | 2 | 3 | 4 | 5,
     reviewerName: '',
     reviewText: '',
-    date: new Date().toISOString().split('T')[0],
+    reviewDate: new Date().toISOString().split('T')[0],
     platform: 'Google' as 'Google' | 'Yelp' | 'Facebook' | 'TripAdvisor' | 'Other',
     reviewUrl: '',
   });
 
+  // Fetch reviews on mount
+  useEffect(() => {
+    const loadReviews = async () => {
+      setLoading(true);
+      await fetchReviews();
+      setLoading(false);
+    };
+    loadReviews();
+  }, [fetchReviews]);
+
   // Wait for hydration to complete
-  if (!hydrated) {
+  if (!hydrated || loading) {
     return (
       <div className="flex items-center justify-center h-96">
         <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
@@ -45,46 +60,29 @@ export function Reviews({ company }: ReviewsProps) {
     );
   }
 
-  const handleAddReview = () => {
+  const handleAddReview = async () => {
     if (!formData.reviewerName.trim() || !formData.reviewText.trim()) {
       alert('Please fill in reviewer name and review text');
       return;
     }
 
-    const newReview: Review = {
-      id: 'review-' + Date.now().toString(),
+    await addReview({
       companyId: company.id,
       rating: formData.rating,
       reviewerName: formData.reviewerName.trim(),
       reviewText: formData.reviewText.trim(),
-      date: formData.date,
+      reviewDate: formData.reviewDate,
       platform: formData.platform,
-      reviewUrl: formData.reviewUrl.trim() || undefined,
-      source: 'manual',
-      createdAt: new Date().toISOString(),
-    };
-
-    const updatedReviews = [...reviews, newReview];
-    
-    const intakeData = intake || {
-      id: 'intake-' + company.id,
-      companyId: company.id,
-      status: 'draft' as const,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    saveIntake({
-      ...intakeData,
-      reviews: updatedReviews,
-      updatedAt: new Date().toISOString(),
+      reviewUrl: formData.reviewUrl.trim() || '',
+      response: '',
+      responseDate: '',
     });
 
     setFormData({
       rating: 5,
       reviewerName: '',
       reviewText: '',
-      date: new Date().toISOString().split('T')[0],
+      reviewDate: new Date().toISOString().split('T')[0],
       platform: 'Google',
       reviewUrl: '',
     });
@@ -93,24 +91,9 @@ export function Reviews({ company }: ReviewsProps) {
     alert('✅ Review added successfully!');
   };
 
-  const handleDeleteReview = (reviewId: string) => {
+  const handleDeleteReview = async (reviewId: string) => {
     if (confirm('Are you sure you want to delete this review?')) {
-      const updatedReviews = reviews.filter(r => r.id !== reviewId);
-      
-      const intakeData = intake || {
-        id: 'intake-' + company.id,
-        companyId: company.id,
-        status: 'draft' as const,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-
-      saveIntake({
-        ...intakeData,
-        reviews: updatedReviews,
-        updatedAt: new Date().toISOString(),
-      });
-      
+      await deleteReview(reviewId);
       alert('✅ Review deleted!');
     }
   };
@@ -176,62 +159,46 @@ export function Reviews({ company }: ReviewsProps) {
                 if (data.complete && data.reviews) {
                   console.log('Import complete! Converting reviews...', data.reviews);
                   
-                  const convertedReviews = data.reviews.map((r: any) => ({
-                    id: r.id,
-                    companyId: company.id,
-                    rating: r.rating as 1 | 2 | 3 | 4 | 5,
-                    reviewerName: r.author,
-                    reviewText: r.text,
-                    date: r.date,
-                    platform: (r.platform.charAt(0).toUpperCase() + r.platform.slice(1)) as 'Google' | 'Yelp' | 'Facebook',
-                    reviewUrl: r.url,
-                    source: 'intake' as const,
-                    createdAt: new Date().toISOString(),
-                  }));
-
-                  console.log('Converted reviews:', convertedReviews);
-
                   const existingTexts = new Set(reviews.map(r => r.reviewText.toLowerCase().trim()));
-                  const newReviews = convertedReviews.filter(r => !existingTexts.has(r.reviewText.toLowerCase().trim()));
-                  
-                  console.log('New reviews after deduplication:', newReviews);
+                  let importedCount = 0;
 
-                  if (newReviews.length === 0) {
-                    alert('ℹ️ No new reviews to import.\n\nAll reviews are already in the system.');
-                    return;
+                  // Add each new review to Supabase
+                  for (const r of data.reviews) {
+                    if (!existingTexts.has(r.text.toLowerCase().trim())) {
+                      await addReview({
+                        companyId: company.id,
+                        rating: r.rating as 1 | 2 | 3 | 4 | 5,
+                        reviewerName: r.author,
+                        reviewText: r.text,
+                        reviewDate: r.date,
+                        platform: (r.platform.charAt(0).toUpperCase() + r.platform.slice(1)) as 'Google' | 'Yelp' | 'Facebook',
+                        reviewUrl: r.url || '',
+                        response: '',
+                        responseDate: '',
+                      });
+                      importedCount++;
+                    }
                   }
 
-                  const updatedReviews = [...reviews, ...newReviews];
-                  console.log('Final updated reviews array:', updatedReviews);
+                  // Update intake with found URLs
+                  if (data.foundUrls && intake) {
+                    await saveIntake({
+                      ...intake,
+                      googleMapsLink1: data.foundUrls.google || intake.googleMapsLink1,
+                      yelpUrl: data.foundUrls.yelp || intake.yelpUrl,
+                      facebookUrl: data.foundUrls.facebook || intake.facebookUrl,
+                      updatedAt: new Date().toISOString(),
+                    });
+                  }
 
-                  // Get or create intake
-                  const intakeData = intake || {
-                    id: 'intake-' + company.id,
-                    companyId: company.id,
-                    status: 'draft' as const,
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString(),
-                  };
-
-                  console.log('Saving to intake with reviews:', updatedReviews);
-
-                  // Save to intake
-                  saveIntake({
-                    ...intakeData,
-                    reviews: updatedReviews,
-                    googleMapsLink1: data.foundUrls?.google || intakeData.googleMapsLink1,
-                    yelpUrl: data.foundUrls?.yelp || intakeData.yelpUrl,
-                    facebookUrl: data.foundUrls?.facebook || intakeData.facebookUrl,
-                    updatedAt: new Date().toISOString(),
-                  });
-
-                  console.log('Saved to Zustand store');
-
-                  alert(`🎉 Successfully imported ${newReviews.length} new reviews!\n\n` +
-                        `✓ Google: ${data.reviews.filter((r: any) => r.platform === 'google').length}\n` +
-                        `✓ Yelp: ${data.reviews.filter((r: any) => r.platform === 'yelp').length}\n` +
-                        `✓ Facebook: ${data.reviews.filter((r: any) => r.platform === 'facebook').length}\n\n` +
-                        `Total reviews: ${updatedReviews.length}`);
+                  if (importedCount === 0) {
+                    alert('ℹ️ No new reviews to import.\n\nAll reviews are already in the system.');
+                  } else {
+                    alert(`🎉 Successfully imported ${importedCount} new reviews!\n\n` +
+                          `✓ Google: ${data.reviews.filter((r: any) => r.platform === 'google').length}\n` +
+                          `✓ Yelp: ${data.reviews.filter((r: any) => r.platform === 'yelp').length}\n` +
+                          `✓ Facebook: ${data.reviews.filter((r: any) => r.platform === 'facebook').length}`);
+                  }
                 }
               } catch (parseError) {
                 console.error('Parse error:', parseError);
@@ -303,7 +270,7 @@ export function Reviews({ company }: ReviewsProps) {
         </div>
       </Card>
 
-      {importError ? (
+      {importError && (
         <Card className="p-4 bg-red-50 border-red-200">
           <div className="flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
@@ -313,9 +280,9 @@ export function Reviews({ company }: ReviewsProps) {
             </div>
           </div>
         </Card>
-      ) : null}
+      )}
 
-      {showAddForm ? (
+      {showAddForm && (
         <Card className="p-6 border-2 border-blue-200">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-slate-900">Add New Review</h3>
@@ -350,7 +317,7 @@ export function Reviews({ company }: ReviewsProps) {
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Review Date</label>
-              <input type="date" value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+              <input type="date" value={formData.reviewDate} onChange={(e) => setFormData({ ...formData, reviewDate: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-2">Review URL (optional)</label>
@@ -366,7 +333,7 @@ export function Reviews({ company }: ReviewsProps) {
             <Button onClick={handleAddReview}>Add Review</Button>
           </div>
         </Card>
-      ) : null}
+      )}
 
       <Card className="p-4">
         <div className="flex items-center justify-between">
@@ -398,9 +365,6 @@ export function Reviews({ company }: ReviewsProps) {
                     <div className="flex items-center gap-2 mb-1">
                       <h4 className="font-semibold text-slate-900">{review.reviewerName}</h4>
                       <Badge variant="secondary" className="text-xs">{review.platform}</Badge>
-                      {review.source === 'intake' ? (
-                        <Badge variant="secondary" className="text-xs bg-green-100 text-green-700">Auto-Imported</Badge>
-                      ) : null}
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="flex gap-0.5">
@@ -411,22 +375,20 @@ export function Reviews({ company }: ReviewsProps) {
                       <span className="text-xs text-slate-500">•</span>
                       <div className="flex items-center gap-1 text-xs text-slate-500">
                         <Calendar className="w-3 h-3" />
-                        {new Date(review.date).toLocaleDateString()}
+                        {new Date(review.reviewDate).toLocaleDateString()}
                       </div>
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {review.reviewUrl ? (
+                  {review.reviewUrl && (
                     <a href={review.reviewUrl} target="_blank" rel="noopener noreferrer" className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
                       <ExternalLink className="w-4 h-4" />
                     </a>
-                  ) : null}
-                  {review.source === 'manual' ? (
-                    <button type="button" onClick={() => handleDeleteReview(review.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                      <X className="w-4 h-4" />
-                    </button>
-                  ) : null}
+                  )}
+                  <button type="button" onClick={() => handleDeleteReview(review.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
               <p className="text-slate-700 leading-relaxed">{review.reviewText}</p>
