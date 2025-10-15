@@ -15,18 +15,15 @@ import {
   ArrowLeft, 
   Building2, 
   Globe, 
-  Mail, 
   Phone, 
   MapPin, 
   Calendar,
   Clock,
-  Star,
   Trash2,
   Edit,
   Loader2
 } from 'lucide-react';
 import Link from 'next/link';
-import { useState as useReactState } from 'react';
 
 export default function CompanyDetailPage() {
   const params = useParams();
@@ -34,13 +31,13 @@ export default function CompanyDetailPage() {
   const companyId = params.id as string;
 
   const companies = useStore((state) => state.companies);
+  const intakes = useStore((state) => state.intakes);
   const fetchCompanies = useStore((state) => state.fetchCompanies);
   const fetchIntakes = useStore((state) => state.fetchIntakes);
-  const getIntakeByCompanyId = useStore((state) => state.getIntakeByCompanyId);
   const deleteCompany = useStore((state) => state.deleteCompany);
 
-  const [activeTab, setActiveTab] = useReactState('overview');
-  const [loading, setLoading] = useReactState(true);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('overview');
 
   useEffect(() => {
     const loadData = async () => {
@@ -56,7 +53,7 @@ export default function CompanyDetailPage() {
   }, [fetchCompanies, fetchIntakes]);
 
   const company = companies.find((c) => c.id === companyId);
-  const intake = getIntakeByCompanyId(companyId);
+  const intake = intakes.find((i) => i.companyId === companyId);
 
   if (loading) {
     return (
@@ -84,13 +81,13 @@ export default function CompanyDetailPage() {
     );
   }
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status?: string) => {
     const colors: Record<string, string> = {
-      NEW: 'bg-purple-100 text-purple-700',
-      ACTIVE: 'bg-green-100 text-green-700',
-      CHURNED: 'bg-red-100 text-red-700',
+      active: 'bg-green-100 text-green-700',
+      inactive: 'bg-gray-100 text-gray-700',
+      pending: 'bg-yellow-100 text-yellow-700',
     };
-    return colors[status] || 'bg-slate-100 text-slate-700';
+    return colors[status || 'active'] || 'bg-slate-100 text-slate-700';
   };
 
   const handleDelete = async () => {
@@ -113,52 +110,45 @@ export default function CompanyDetailPage() {
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-4">
             <div className="w-16 h-16 rounded-lg overflow-hidden bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-2xl font-bold flex-shrink-0">
-              {company.logoUrl ? (
-                <img src={company.logoUrl} alt={company.name} className="w-full h-full object-cover" />
-              ) : (
-                <span>{(intake?.officialName || company.name).charAt(0)}</span>
-              )}
+              {company.name.charAt(0)}
             </div>
 
             <div className="flex-1">
               <h1 className="text-2xl font-bold text-slate-900 mb-2">
-                {intake?.officialName || company.name}
+                {company.name}
               </h1>
 
               <div className="flex items-center gap-2 mb-3">
                 <Badge className={getStatusColor(company.status)}>
-                  {company.status}
+                  {company.status || 'active'}
                 </Badge>
-                <Badge variant="outline">{company.plan}</Badge>
-                {company.assignedVaName && (
-                  <Badge variant="secondary">{company.assignedVaName}</Badge>
-                )}
+                {company.plan && <Badge variant="outline">{company.plan}</Badge>}
               </div>
 
               <div className="space-y-1 text-sm text-slate-600">
-                {(intake?.website || company.website) && (
+                {company.website && (
                   <div className="flex items-center gap-2">
                     <Globe className="w-4 h-4" />
                     <a 
-                      href={intake?.website || company.website} 
+                      href={company.website} 
                       target="_blank" 
                       rel="noopener noreferrer"
                       className="hover:text-blue-600"
                     >
-                      {intake?.website || company.website}
+                      {company.website}
                     </a>
                   </div>
                 )}
-                {(intake?.mainPhone || company.phone) && (
+                {company.phone && (
                   <div className="flex items-center gap-2">
                     <Phone className="w-4 h-4" />
-                    {intake?.mainPhone || company.phone}
+                    {company.phone}
                   </div>
                 )}
-                {(intake?.physicalAddress || company.address) && (
+                {company.address && (
                   <div className="flex items-center gap-2">
                     <MapPin className="w-4 h-4" />
-                    {intake?.physicalAddress || company.address}
+                    {company.address}
                   </div>
                 )}
               </div>
@@ -167,14 +157,18 @@ export default function CompanyDetailPage() {
 
           <div className="flex flex-col items-end gap-2">
             <div className="text-sm text-slate-500">
-              <div className="flex items-center gap-2 mb-1">
-                <Calendar className="w-4 h-4" />
-                Created {new Date(company.createdAt).toLocaleDateString()}
-              </div>
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4" />
-                Updated {new Date(company.lastUpdated).toLocaleDateString()}
-              </div>
+              {company.createdAt && (
+                <div className="flex items-center gap-2 mb-1">
+                  <Calendar className="w-4 h-4" />
+                  Created {new Date(company.createdAt).toLocaleDateString()}
+                </div>
+              )}
+              {company.updatedAt && (
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4" />
+                  Updated {new Date(company.updatedAt).toLocaleDateString()}
+                </div>
+              )}
             </div>
             <div className="flex gap-2 mt-2">
               <Button variant="outline" size="sm">
