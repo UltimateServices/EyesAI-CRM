@@ -255,10 +255,10 @@ export const useStore = create<StoreState>((set, get) => ({
       companyId: row.company_id,
       platform: row.platform,
       rating: row.rating,
-      reviewerName: row.reviewer_name,
-      reviewText: row.review_text,
-      reviewDate: row.review_date,
-      reviewUrl: row.review_url || '',
+      reviewerName: row.author || 'Unknown',
+      reviewText: row.text || '',
+      reviewDate: row.date || '',
+      reviewUrl: row.url || '',
       response: row.response || '',
       responseDate: row.response_date || '',
       createdAt: row.created_at,
@@ -277,12 +277,10 @@ export const useStore = create<StoreState>((set, get) => ({
         company_id: review.companyId,
         platform: review.platform,
         rating: review.rating,
-        reviewer_name: review.reviewerName,
-        review_text: review.reviewText,
-        review_date: review.reviewDate,
-        review_url: review.reviewUrl || null,
-        response: review.response || null,
-        response_date: review.responseDate || null,
+        author: review.reviewerName,
+        text: review.reviewText,
+        date: review.reviewDate,
+        url: review.reviewUrl || null,
       }]);
 
     if (error) {
@@ -302,12 +300,10 @@ export const useStore = create<StoreState>((set, get) => ({
       .update({
         platform: updates.platform,
         rating: updates.rating,
-        reviewer_name: updates.reviewerName,
-        review_text: updates.reviewText,
-        review_date: updates.reviewDate,
-        review_url: updates.reviewUrl,
-        response: updates.response,
-        response_date: updates.responseDate,
+        author: updates.reviewerName,
+        text: updates.reviewText,
+        date: updates.reviewDate,
+        url: updates.reviewUrl,
       })
       .eq('id', id);
 
