@@ -118,6 +118,11 @@ export function Reviews({ company }: ReviewsProps) {
             yelp: intake?.yelpUrl || null,
             facebook: intake?.facebookUrl || null,
           },
+          companyDetails: {
+            address: intake?.physicalAddress || company.address || '',
+            phone: intake?.mainPhone || company.phone || '',
+            website: intake?.website || company.website || '',
+          },
         }),
       });
 
@@ -190,6 +195,9 @@ export function Reviews({ company }: ReviewsProps) {
                       updatedAt: new Date().toISOString(),
                     });
                   }
+
+                  // Refresh reviews to update UI
+                  await fetchReviews();
 
                   if (importedCount === 0) {
                     alert('ℹ️ No new reviews to import.\n\nAll reviews are already in the system.');
@@ -418,12 +426,12 @@ export function Reviews({ company }: ReviewsProps) {
       <Card className="p-6 bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
         <h4 className="font-semibold text-slate-900 mb-3">🚀 Smart Import Technology</h4>
         <p className="text-sm text-slate-700 mb-3">
-          Our AI-powered system automatically finds and imports reviews from Google, Yelp, and Facebook.
+          Our AI-powered system automatically finds and imports reviews from Google, Yelp, and Facebook using multiple search methods.
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-slate-700">
           <div className="flex items-start gap-2">
             <span className="text-blue-600 font-bold">✓</span>
-            <span><strong>AI Search:</strong> Finds your business across all platforms</span>
+            <span><strong>Smart Search:</strong> Uses name, address, phone, and website</span>
           </div>
           <div className="flex items-start gap-2">
             <span className="text-blue-600 font-bold">✓</span>
@@ -440,7 +448,7 @@ export function Reviews({ company }: ReviewsProps) {
         </div>
         <div className="mt-4 p-3 bg-white rounded border border-blue-200">
           <p className="text-xs text-slate-600">
-            <strong>💡 Pro Tip:</strong> Add Google Maps links manually in Intake → Part 7 for the most accurate results!
+            <strong>💡 Pro Tip:</strong> The more company details you fill in (address, phone, website), the better the search results!
           </p>
         </div>
       </Card>
