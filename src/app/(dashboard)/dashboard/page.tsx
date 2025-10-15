@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useStore } from '@/lib/store';
 import { DataManager } from '@/components/data-manager';
 import { Button } from '@/components/ui/button';
@@ -12,7 +13,8 @@ import {
   CheckCircle, 
   Clock, 
   TrendingUp, 
-  TrendingDown 
+  TrendingDown,
+  Loader2
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -21,12 +23,29 @@ export default function DashboardPage() {
   const router = useRouter();
   const companies = useStore((state) => state.companies);
   const tasks = useStore((state) => state.tasks);
+  const fetchCompanies = useStore((state) => state.fetchCompanies);
+  const fetchIntakes = useStore((state) => state.fetchIntakes);
+  
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      await Promise.all([
+        fetchCompanies(),
+        fetchIntakes(),
+      ]);
+      setLoading(false);
+    };
+    
+    loadData();
+  }, [fetchCompanies, fetchIntakes]);
 
   const stats = {
-    totalCompanies: companies.length,
-    activeCompanies: companies.filter((c) => c.status === 'ACTIVE').length,
-    newCompanies: companies.filter((c) => c.status === 'NEW').length,
-    pendingTasks: tasks.filter((t) => t.status === 'todo' || t.status === 'in_progress').length,
+    totalCompanies: companies?.length || 0,
+    activeCompanies: companies?.filter((c) => c.status === 'ACTIVE').length || 0,
+    newCompanies: companies?.filter((c) => c.status === 'NEW').length || 0,
+    pendingTasks: tasks?.filter((t) => t.status === 'todo' || t.status === 'in_progress').length || 0,
   };
 
   const getStatusColor = (status: string) => {
@@ -37,6 +56,17 @@ export default function DashboardPage() {
     };
     return colors[status] || 'bg-slate-100 text-slate-700';
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
+          <p className="text-slate-600">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -53,7 +83,6 @@ export default function DashboardPage() {
 
       <DataManager />
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card className="p-6">
           <div className="flex items-center justify-between">
@@ -124,7 +153,6 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Companies List */}
       <Card className="p-6">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-semibold text-slate-900">Companies</h2>
@@ -136,7 +164,7 @@ export default function DashboardPage() {
           </Button>
         </div>
 
-        {companies.length === 0 ? (
+        {!companies || companies.length === 0 ? (
           <div className="text-center py-12">
             <Building2 className="w-16 h-16 text-slate-300 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-slate-900 mb-2">No companies yet</h3>
