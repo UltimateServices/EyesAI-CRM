@@ -1,10 +1,11 @@
 import { NextRequest } from 'next/server';
 
+const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY;
 const SERPER_API_KEY = process.env.SERPER_API_KEY;
 
 export async function POST(request: NextRequest) {
   const encoder = new TextEncoder();
-  const { companyId, companyName, existingUrls } = await request.json();
+  const { companyId, companyName, existingUrls, companyDetails } = await request.json();
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -15,17 +16,6 @@ export async function POST(request: NextRequest) {
 
         sendLog(`🚀 Starting smart import for ${companyName}`);
 
-        if (!SERPER_API_KEY) {
-          sendLog('❌ SERPER_API_KEY not configured');
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
-            complete: true, 
-            reviews: [], 
-            error: 'API key not configured' 
-          })}\n\n`));
-          controller.close();
-          return;
-        }
-
         const allReviews: any[] = [];
         const foundUrls: any = {
           google: existingUrls?.google || null,
@@ -33,104 +23,178 @@ export async function POST(request: NextRequest) {
           facebook: existingUrls?.facebook || null,
         };
 
-        // Search Google Reviews
-        sendLog('🔍 Searching Google for reviews...');
-        try {
-          const googleQuery = existingUrls?.google 
-            ? `site:google.com/maps "${companyName}" reviews`
-            : `"${companyName}" site:google.com/maps reviews`;
+        // ===== GOOGLE REVIEWS - Use Google Places API =====
+        if (GOOGLE_PLACES_API_KEY) {
+          sendLog('🔍 Searching Google Places for reviews...');
+          try {
+            let placeId = null;
 
-          const googleResponse = await fetch('https://google.serper.dev/search', {
-            method: 'POST',
-            headers: {
-              'X-API-KEY': SERPER_API_KEY,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              q: googleQuery,
-              num: 10,
-            }),
-          });
+            // Try to get place ID from URL first
+            if (existingUrls?.google) {
+              placeId = extractPlaceIdFromUrl(existingUrls.google);
+              if (placeId) sendLog('✅ Extracted Place ID from URL');
+            }
 
-          const googleData = await googleResponse.json();
-          
-          if (googleData.organic?.[0]?.link) {
-            foundUrls.google = googleData.organic[0].link;
-            sendLog(`✅ Found Google Maps listing`);
+            // If no place ID, try multiple search methods
+            if (!placeId) {
+              // Method 1: Search by name only
+              sendLog('🔍 Method 1: Searching by business name...');
+              placeId = await searchGooglePlaces(companyName);
+              
+              // Method 2: Search by name + address
+              if (!placeId && companyDetails?.address) {
+                sendLog('🔍 Method 2: Searching by name + address...');
+                placeId = await searchGooglePlaces(`${companyName} ${companyDetails.address}`);
+              }
+              
+              // Method 3: Search by name + phone
+              if (!placeId && companyDetails?.phone) {
+                sendLog('🔍 Method 3: Searching by name + phone...');
+                placeId = await searchGooglePlaces(`${companyName} ${companyDetails.phone}`);
+              }
+              
+              // Method 4: Search by name + city/state
+              if (!placeId && companyDetails?.address) {
+                const cityState = extractCityState(companyDetails.address);
+                if (cityState) {
+                  sendLog(`🔍 Method 4: Searching by name + ${cityState}...`);
+                  placeId = await searchGooglePlaces(`${companyName} ${cityState}`);
+                }
+              }
 
-            // Extract reviews from snippets
-            const googleReviews = extractGoogleReviews(googleData, companyName);
-            allReviews.push(...googleReviews);
-            sendLog(`📊 Extracted ${googleReviews.length} Google reviews from search results`);
+              // Method 5: Search by website domain
+              if (!placeId && companyDetails?.website) {
+                const domain = extractDomain(companyDetails.website);
+                if (domain) {
+                  sendLog(`🔍 Method 5: Searching by domain ${domain}...`);
+                  placeId = await searchGooglePlaces(`${domain}`);
+                }
+              }
+            }
+
+            if (placeId) {
+              sendLog('✅ Found Google Place! Fetching reviews...');
+              
+              const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,reviews,rating,user_ratings_total,url,formatted_address,formatted_phone_number&key=${GOOGLE_PLACES_API_KEY}`;
+              const detailsResponse = await fetch(detailsUrl);
+              const detailsData = await detailsResponse.json();
+
+              if (detailsData.status === 'OK' && detailsData.result) {
+                foundUrls.google = detailsData.result.url || foundUrls.google;
+                
+                if (detailsData.result.reviews) {
+                  const googleReviews = detailsData.result.reviews.map((review: any) => ({
+                    id: `google-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    author: review.author_name || 'Google User',
+                    rating: review.rating || 5,
+                    text: review.text || '',
+                    date: review.time ? new Date(review.time * 1000).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+                    platform: 'google',
+                    url: review.author_url || foundUrls.google,
+                  }));
+
+                  allReviews.push(...googleReviews);
+                  sendLog(`📊 Found ${googleReviews.length} Google reviews`);
+                  sendLog(`📍 Verified: ${detailsData.result.name} - ${detailsData.result.formatted_address}`);
+                } else {
+                  sendLog('⚠️ Google Place found but no reviews available');
+                }
+              }
+            } else {
+              sendLog('⚠️ Could not find Google Place after trying all search methods');
+            }
+          } catch (error: any) {
+            sendLog(`⚠️ Google Places API error: ${error.message}`);
           }
-        } catch (error) {
-          sendLog('⚠️ Could not fetch Google reviews');
+        } else {
+          sendLog('⚠️ Google Places API key not configured');
         }
 
-        // Search Yelp Reviews
-        sendLog('🔍 Searching Yelp for reviews...');
-        try {
-          const yelpQuery = existingUrls?.yelp
-            ? `site:yelp.com "${companyName}" reviews`
-            : `"${companyName}" site:yelp.com reviews`;
+        // ===== YELP & FACEBOOK REVIEWS - Use Serper API =====
+        if (SERPER_API_KEY) {
+          // Search Yelp with fallbacks
+          sendLog('🔍 Searching Yelp for reviews...');
+          try {
+            let yelpQuery = `"${companyName}" site:yelp.com`;
+            
+            // Add location to query if available
+            if (companyDetails?.address) {
+              const cityState = extractCityState(companyDetails.address);
+              if (cityState) {
+                yelpQuery = `"${companyName}" ${cityState} site:yelp.com`;
+              }
+            }
 
-          const yelpResponse = await fetch('https://google.serper.dev/search', {
-            method: 'POST',
-            headers: {
-              'X-API-KEY': SERPER_API_KEY,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              q: yelpQuery,
-              num: 10,
-            }),
-          });
+            const yelpResponse = await fetch('https://google.serper.dev/search', {
+              method: 'POST',
+              headers: {
+                'X-API-KEY': SERPER_API_KEY,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                q: yelpQuery,
+                num: 10,
+              }),
+            });
 
-          const yelpData = await yelpResponse.json();
-          
-          if (yelpData.organic?.[0]?.link) {
-            foundUrls.yelp = yelpData.organic[0].link;
-            sendLog(`✅ Found Yelp listing`);
+            const yelpData = await yelpResponse.json();
+            
+            if (yelpData.organic?.[0]?.link) {
+              foundUrls.yelp = yelpData.organic[0].link;
+              sendLog(`✅ Found Yelp listing`);
 
-            const yelpReviews = extractYelpReviews(yelpData, companyName);
-            allReviews.push(...yelpReviews);
-            sendLog(`📊 Extracted ${yelpReviews.length} Yelp reviews from search results`);
+              const yelpReviews = extractReviewsFromSearch(yelpData, 'yelp');
+              allReviews.push(...yelpReviews);
+              sendLog(`📊 Extracted ${yelpReviews.length} Yelp reviews`);
+            } else {
+              sendLog('⚠️ Could not find Yelp listing');
+            }
+          } catch (error) {
+            sendLog('⚠️ Could not fetch Yelp reviews');
           }
-        } catch (error) {
-          sendLog('⚠️ Could not fetch Yelp reviews');
-        }
 
-        // Search Facebook Reviews
-        sendLog('🔍 Searching Facebook for reviews...');
-        try {
-          const facebookQuery = existingUrls?.facebook
-            ? `site:facebook.com "${companyName}" reviews`
-            : `"${companyName}" site:facebook.com reviews`;
+          // Search Facebook with fallbacks
+          sendLog('🔍 Searching Facebook for reviews...');
+          try {
+            let facebookQuery = `"${companyName}" site:facebook.com`;
+            
+            // Add location to query if available
+            if (companyDetails?.address) {
+              const cityState = extractCityState(companyDetails.address);
+              if (cityState) {
+                facebookQuery = `"${companyName}" ${cityState} site:facebook.com`;
+              }
+            }
 
-          const facebookResponse = await fetch('https://google.serper.dev/search', {
-            method: 'POST',
-            headers: {
-              'X-API-KEY': SERPER_API_KEY,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              q: facebookQuery,
-              num: 10,
-            }),
-          });
+            const facebookResponse = await fetch('https://google.serper.dev/search', {
+              method: 'POST',
+              headers: {
+                'X-API-KEY': SERPER_API_KEY,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                q: facebookQuery,
+                num: 10,
+              }),
+            });
 
-          const facebookData = await facebookResponse.json();
-          
-          if (facebookData.organic?.[0]?.link) {
-            foundUrls.facebook = facebookData.organic[0].link;
-            sendLog(`✅ Found Facebook page`);
+            const facebookData = await facebookResponse.json();
+            
+            if (facebookData.organic?.[0]?.link) {
+              foundUrls.facebook = facebookData.organic[0].link;
+              sendLog(`✅ Found Facebook page`);
 
-            const facebookReviews = extractFacebookReviews(facebookData, companyName);
-            allReviews.push(...facebookReviews);
-            sendLog(`📊 Extracted ${facebookReviews.length} Facebook reviews from search results`);
+              const facebookReviews = extractReviewsFromSearch(facebookData, 'facebook');
+              allReviews.push(...facebookReviews);
+              sendLog(`📊 Extracted ${facebookReviews.length} Facebook reviews`);
+            } else {
+              sendLog('⚠️ Could not find Facebook page');
+            }
+          } catch (error) {
+            sendLog('⚠️ Could not fetch Facebook reviews');
           }
-        } catch (error) {
-          sendLog('⚠️ Could not fetch Facebook reviews');
+        } else {
+          sendLog('⚠️ Serper API key not configured - skipping Yelp/Facebook');
         }
 
         sendLog(`🎉 Import complete! Found ${allReviews.length} total reviews`);
@@ -163,74 +227,59 @@ export async function POST(request: NextRequest) {
   });
 }
 
-function extractGoogleReviews(data: any, companyName: string): any[] {
-  const reviews: any[] = [];
-  
-  // Extract from organic results
-  if (data.organic) {
-    for (const result of data.organic) {
-      if (result.snippet && result.snippet.length > 50) {
-        // Try to extract rating from snippet
-        const ratingMatch = result.snippet.match(/(\d)(?:\.\d)?\s*(?:star|★)/i);
-        const rating = ratingMatch ? parseInt(ratingMatch[1]) : 5;
-
-        reviews.push({
-          id: `google-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          author: extractAuthorName(result.snippet) || 'Google User',
-          rating: rating,
-          text: cleanSnippet(result.snippet),
-          date: extractDate(result.snippet) || new Date().toISOString().split('T')[0],
-          platform: 'google',
-          url: result.link,
-        });
-      }
+async function searchGooglePlaces(query: string): Promise<string | null> {
+  try {
+    const searchUrl = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=place_id,name,formatted_address&key=${GOOGLE_PLACES_API_KEY}`;
+    const searchResponse = await fetch(searchUrl);
+    const searchData = await searchResponse.json();
+    
+    if (searchData.status === 'OK' && searchData.candidates?.[0]) {
+      return searchData.candidates[0].place_id;
     }
+    
+    return null;
+  } catch (error) {
+    return null;
   }
-
-  // Extract from reviews section
-  if (data.reviews) {
-    for (const review of data.reviews) {
-      reviews.push({
-        id: `google-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        author: review.author || 'Google User',
-        rating: review.rating || 5,
-        text: review.snippet || review.text || '',
-        date: review.date || new Date().toISOString().split('T')[0],
-        platform: 'google',
-        url: review.link || '',
-      });
-    }
-  }
-
-  return reviews.slice(0, 20); // Limit to 20 reviews
 }
 
-function extractYelpReviews(data: any, companyName: string): any[] {
-  const reviews: any[] = [];
+function extractPlaceIdFromUrl(url: string): string | null {
+  const placeIdParam = url.match(/place_id=([^&]+)/);
+  if (placeIdParam) return placeIdParam[1];
   
-  if (data.organic) {
-    for (const result of data.organic) {
-      if (result.snippet && result.snippet.length > 50) {
-        const ratingMatch = result.snippet.match(/(\d)(?:\.\d)?\s*star/i);
-        const rating = ratingMatch ? parseInt(ratingMatch[1]) : 5;
-
-        reviews.push({
-          id: `yelp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          author: extractAuthorName(result.snippet) || 'Yelp User',
-          rating: rating,
-          text: cleanSnippet(result.snippet),
-          date: extractDate(result.snippet) || new Date().toISOString().split('T')[0],
-          platform: 'yelp',
-          url: result.link,
-        });
-      }
-    }
-  }
-
-  return reviews.slice(0, 20);
+  const placeId1s = url.match(/!1s([A-Za-z0-9_-]+)/);
+  if (placeId1s) return placeId1s[1];
+  
+  const placeIdData = url.match(/data=.*?!1s([A-Za-z0-9_-]+)/);
+  if (placeIdData) return placeIdData[1];
+  
+  return null;
 }
 
-function extractFacebookReviews(data: any, companyName: string): any[] {
+function extractCityState(address: string): string | null {
+  // Extract city and state from address
+  // Format: "123 Main St, New York, NY 10001"
+  const parts = address.split(',').map(p => p.trim());
+  
+  if (parts.length >= 2) {
+    // Get last two parts (city and state/zip)
+    const cityState = parts.slice(-2).join(', ');
+    return cityState;
+  }
+  
+  return null;
+}
+
+function extractDomain(website: string): string | null {
+  try {
+    const url = new URL(website.startsWith('http') ? website : `https://${website}`);
+    return url.hostname.replace('www.', '');
+  } catch (e) {
+    return null;
+  }
+}
+
+function extractReviewsFromSearch(data: any, platform: string): any[] {
   const reviews: any[] = [];
   
   if (data.organic) {
@@ -240,23 +289,22 @@ function extractFacebookReviews(data: any, companyName: string): any[] {
         const rating = ratingMatch ? parseInt(ratingMatch[1]) : 5;
 
         reviews.push({
-          id: `facebook-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          author: extractAuthorName(result.snippet) || 'Facebook User',
+          id: `${platform}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          author: extractAuthorName(result.snippet) || `${platform.charAt(0).toUpperCase() + platform.slice(1)} User`,
           rating: rating,
           text: cleanSnippet(result.snippet),
           date: extractDate(result.snippet) || new Date().toISOString().split('T')[0],
-          platform: 'facebook',
+          platform: platform,
           url: result.link,
         });
       }
     }
   }
 
-  return reviews.slice(0, 20);
+  return reviews.slice(0, 15);
 }
 
 function extractAuthorName(text: string): string | null {
-  // Try to extract name patterns
   const patterns = [
     /(?:by|from)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/,
     /^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+(?:said|wrote|reviewed)/,
@@ -271,7 +319,6 @@ function extractAuthorName(text: string): string | null {
 }
 
 function extractDate(text: string): string | null {
-  // Try to extract date patterns
   const patterns = [
     /(\d{1,2}\/\d{1,2}\/\d{4})/,
     /(\w+\s+\d{1,2},\s+\d{4})/,
@@ -296,14 +343,12 @@ function extractDate(text: string): string | null {
 }
 
 function cleanSnippet(snippet: string): string {
-  // Remove common patterns
   let cleaned = snippet
     .replace(/\d+\s*(?:star|★).*?(?:\.|$)/gi, '')
     .replace(/^.*?(?:said|wrote|reviewed):\s*/i, '')
     .replace(/^["""]|["""]$/g, '')
     .trim();
 
-  // Limit length
   if (cleaned.length > 500) {
     cleaned = cleaned.substring(0, 500) + '...';
   }
