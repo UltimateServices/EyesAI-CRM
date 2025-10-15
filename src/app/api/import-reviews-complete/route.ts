@@ -31,7 +31,6 @@ export async function POST(request: NextRequest) {
 
             // Try to get place ID from URL first
             if (existingUrls?.google) {
-              // Check if it's a share.google link and expand it
               let googleUrl = existingUrls.google;
               
               if (googleUrl.includes('share.google') || googleUrl.includes('goo.gl') || googleUrl.includes('maps.app.goo.gl')) {
@@ -39,8 +38,8 @@ export async function POST(request: NextRequest) {
                 const expandedUrl = await expandShortenedUrl(googleUrl);
                 if (expandedUrl) {
                   googleUrl = expandedUrl;
-                  foundUrls.google = expandedUrl; // Update with full URL
-                  sendLog(`✅ Expanded to: ${expandedUrl.substring(0, 80)}...`);
+                  foundUrls.google = expandedUrl;
+                  sendLog(`✅ Expanded URL`);
                 }
               }
               
@@ -48,40 +47,49 @@ export async function POST(request: NextRequest) {
               if (placeId) sendLog('✅ Extracted Place ID from URL');
             }
 
-            // If no place ID, try multiple search methods
+            // If no place ID, use advanced search methods
             if (!placeId) {
-              // Method 1: Search by name only
-              sendLog('🔍 Method 1: Searching by business name...');
-              placeId = await searchGooglePlaces(companyName);
-              
-              // Method 2: Search by name + address
-              if (!placeId && companyDetails?.address) {
-                sendLog('🔍 Method 2: Searching by name + address...');
-                placeId = await searchGooglePlaces(`${companyName} ${companyDetails.address}`);
-              }
-              
-              // Method 3: Search by name + phone
-              if (!placeId && companyDetails?.phone) {
-                sendLog('🔍 Method 3: Searching by name + phone...');
-                placeId = await searchGooglePlaces(`${companyName} ${companyDetails.phone}`);
-              }
-              
-              // Method 4: Search by name + city/state
-              if (!placeId && companyDetails?.address) {
-                const cityState = extractCityState(companyDetails.address);
-                if (cityState) {
-                  sendLog(`🔍 Method 4: Searching by name + ${cityState}...`);
-                  placeId = await searchGooglePlaces(`${companyName} ${cityState}`);
+              // Get coordinates from address for location-based search
+              let coordinates = null;
+              if (companyDetails?.address) {
+                sendLog('📍 Getting coordinates from address...');
+                coordinates = await geocodeAddress(companyDetails.address);
+                if (coordinates) {
+                  sendLog(`✅ Coordinates: ${coordinates.lat}, ${coordinates.lng}`);
                 }
               }
 
-              // Method 5: Search by website domain
-              if (!placeId && companyDetails?.website) {
-                const domain = extractDomain(companyDetails.website);
-                if (domain) {
-                  sendLog(`🔍 Method 5: Searching by domain ${domain}...`);
-                  placeId = await searchGooglePlaces(`${domain}`);
+              // Method 1: Text Search with coordinates (BEST METHOD)
+              if (coordinates) {
+                sendLog('🔍 Method 1: Searching with name + coordinates...');
+                placeId = await textSearchPlaces(`${companyName}`, coordinates);
+              }
+
+              // Method 2: Text Search with full address
+              if (!placeId && companyDetails?.address) {
+                sendLog('🔍 Method 2: Searching with name + full address...');
+                placeId = await textSearchPlaces(`${companyName} ${companyDetails.address}`);
+              }
+
+              // Method 3: Find Place with phone number
+              if (!placeId && companyDetails?.phone) {
+                sendLog('🔍 Method 3: Searching by phone number...');
+                placeId = await findPlaceByPhone(companyDetails.phone);
+              }
+
+              // Method 4: Text Search with name + city/state
+              if (!placeId && companyDetails?.address) {
+                const cityState = extractCityState(companyDetails.address);
+                if (cityState) {
+                  sendLog(`🔍 Method 4: Searching with name + ${cityState}...`);
+                  placeId = await textSearchPlaces(`${companyName} ${cityState}`);
                 }
+              }
+
+              // Method 5: Find Place with just name
+              if (!placeId) {
+                sendLog('🔍 Method 5: Searching by name only...');
+                placeId = await findPlaceFromText(companyName);
               }
             }
 
@@ -95,7 +103,10 @@ export async function POST(request: NextRequest) {
               if (detailsData.status === 'OK' && detailsData.result) {
                 foundUrls.google = detailsData.result.url || foundUrls.google;
                 
-                if (detailsData.result.reviews) {
+                sendLog(`📍 Found: ${detailsData.result.name}`);
+                sendLog(`📍 Address: ${detailsData.result.formatted_address}`);
+                
+                if (detailsData.result.reviews && detailsData.result.reviews.length > 0) {
                   const googleReviews = detailsData.result.reviews.map((review: any) => ({
                     id: `google-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                     author: review.author_name || 'Google User',
@@ -108,13 +119,13 @@ export async function POST(request: NextRequest) {
 
                   allReviews.push(...googleReviews);
                   sendLog(`📊 Found ${googleReviews.length} Google reviews`);
-                  sendLog(`📍 Verified: ${detailsData.result.name} - ${detailsData.result.formatted_address}`);
                 } else {
-                  sendLog('⚠️ Google Place found but no reviews available');
+                  sendLog('⚠️ Google Place found but has 0 reviews on Google');
                 }
               }
             } else {
-              sendLog('⚠️ Could not find Google Place after trying all search methods');
+              sendLog('❌ Could not find Google Place after all search methods');
+              sendLog('💡 Tip: Add the exact Google Maps URL in Intake → Part 7');
             }
           } catch (error: any) {
             sendLog(`⚠️ Google Places API error: ${error.message}`);
@@ -125,12 +136,11 @@ export async function POST(request: NextRequest) {
 
         // ===== YELP & FACEBOOK REVIEWS - Use Serper API =====
         if (SERPER_API_KEY) {
-          // Search Yelp with fallbacks
+          // Search Yelp
           sendLog('🔍 Searching Yelp for reviews...');
           try {
             let yelpQuery = `"${companyName}" site:yelp.com`;
             
-            // Add location to query if available
             if (companyDetails?.address) {
               const cityState = extractCityState(companyDetails.address);
               if (cityState) {
@@ -166,12 +176,11 @@ export async function POST(request: NextRequest) {
             sendLog('⚠️ Could not fetch Yelp reviews');
           }
 
-          // Search Facebook with fallbacks
+          // Search Facebook
           sendLog('🔍 Searching Facebook for reviews...');
           try {
             let facebookQuery = `"${companyName}" site:facebook.com`;
             
-            // Add location to query if available
             if (companyDetails?.address) {
               const cityState = extractCityState(companyDetails.address);
               if (cityState) {
@@ -240,33 +249,94 @@ export async function POST(request: NextRequest) {
   });
 }
 
+// Geocode address to get coordinates
+async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_PLACES_API_KEY}`;
+    const response = await fetch(geocodeUrl);
+    const data = await response.json();
+    
+    if (data.status === 'OK' && data.results?.[0]?.geometry?.location) {
+      return {
+        lat: data.results[0].geometry.location.lat,
+        lng: data.results[0].geometry.location.lng,
+      };
+    }
+    
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
+
+// Text Search API - BEST for finding businesses with location
+async function textSearchPlaces(query: string, location?: { lat: number; lng: number }): Promise<string | null> {
+  try {
+    let searchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&key=${GOOGLE_PLACES_API_KEY}`;
+    
+    // Add location bias if available
+    if (location) {
+      searchUrl += `&location=${location.lat},${location.lng}&radius=1000`;
+    }
+    
+    const response = await fetch(searchUrl);
+    const data = await response.json();
+    
+    if (data.status === 'OK' && data.results?.[0]) {
+      return data.results[0].place_id;
+    }
+    
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
+
+// Find Place by phone number
+async function findPlaceByPhone(phone: string): Promise<string | null> {
+  try {
+    // Clean phone number (remove spaces, dashes, etc)
+    const cleanPhone = phone.replace(/[\s\-\(\)]/g, '');
+    
+    const searchUrl = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(cleanPhone)}&inputtype=phonenumber&fields=place_id&key=${GOOGLE_PLACES_API_KEY}`;
+    const response = await fetch(searchUrl);
+    const data = await response.json();
+    
+    if (data.status === 'OK' && data.candidates?.[0]) {
+      return data.candidates[0].place_id;
+    }
+    
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
+
+// Find Place from text (fallback)
+async function findPlaceFromText(query: string): Promise<string | null> {
+  try {
+    const searchUrl = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=place_id,name,formatted_address&key=${GOOGLE_PLACES_API_KEY}`;
+    const response = await fetch(searchUrl);
+    const data = await response.json();
+    
+    if (data.status === 'OK' && data.candidates?.[0]) {
+      return data.candidates[0].place_id;
+    }
+    
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
+
 async function expandShortenedUrl(shortUrl: string): Promise<string | null> {
   try {
-    // Use HEAD request to follow redirects without downloading content
     const response = await fetch(shortUrl, {
       method: 'HEAD',
       redirect: 'follow',
     });
     
-    // Return the final URL after all redirects
     return response.url || null;
-  } catch (error) {
-    console.error('Error expanding URL:', error);
-    return null;
-  }
-}
-
-async function searchGooglePlaces(query: string): Promise<string | null> {
-  try {
-    const searchUrl = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=place_id,name,formatted_address&key=${GOOGLE_PLACES_API_KEY}`;
-    const searchResponse = await fetch(searchUrl);
-    const searchData = await searchResponse.json();
-    
-    if (searchData.status === 'OK' && searchData.candidates?.[0]) {
-      return searchData.candidates[0].place_id;
-    }
-    
-    return null;
   } catch (error) {
     return null;
   }
@@ -286,12 +356,9 @@ function extractPlaceIdFromUrl(url: string): string | null {
 }
 
 function extractCityState(address: string): string | null {
-  // Extract city and state from address
-  // Format: "123 Main St, New York, NY 10001"
   const parts = address.split(',').map(p => p.trim());
   
   if (parts.length >= 2) {
-    // Get last two parts (city and state/zip)
     const cityState = parts.slice(-2).join(', ');
     return cityState;
   }
