@@ -1,148 +1,153 @@
 import { NextRequest } from 'next/server';
-import { supabase } from '@/lib/supabase';
 
-const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY;
+const SERPER_API_KEY = process.env.SERPER_API_KEY;
 
 export async function POST(request: NextRequest) {
   const encoder = new TextEncoder();
-  const { companyId, companyName, googleMapsUrl, yelpUrl, facebookUrl } = await request.json();
+  const { companyId, companyName, existingUrls } = await request.json();
 
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
-          status: '🔍 Searching for business...' 
-        })}\n\n`));
-        
-        if (!GOOGLE_PLACES_API_KEY) {
+        const sendLog = (message: string) => {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ searchLog: message })}\n\n`));
+        };
+
+        sendLog(`🚀 Starting smart import for ${companyName}`);
+
+        if (!SERPER_API_KEY) {
+          sendLog('❌ SERPER_API_KEY not configured');
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
-            status: '❌ Google Places API key missing',
-            error: true 
+            complete: true, 
+            reviews: [], 
+            error: 'API key not configured' 
           })}\n\n`));
           controller.close();
           return;
         }
 
-        // Try multiple methods to find the place
-        let placeId = null;
-        
-        // Method 1: Extract from URL
-        if (googleMapsUrl) {
-          placeId = extractPlaceIdFromUrl(googleMapsUrl);
-        }
-        
-        // Method 2: Search by business name
-        if (!placeId) {
-          placeId = await searchByText(companyName);
-        }
-        
-        if (!placeId) {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
-            status: '❌ Could not find business on Google',
-            error: true 
-          })}\n\n`));
-          controller.close();
-          return;
-        }
+        const allReviews: any[] = [];
+        const foundUrls: any = {
+          google: existingUrls?.google || null,
+          yelp: existingUrls?.yelp || null,
+          facebook: existingUrls?.facebook || null,
+        };
 
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
-          status: '✅ Found business! Fetching reviews...' 
-        })}\n\n`));
+        // Search Google Reviews
+        sendLog('🔍 Searching Google for reviews...');
+        try {
+          const googleQuery = existingUrls?.google 
+            ? `site:google.com/maps "${companyName}" reviews`
+            : `"${companyName}" site:google.com/maps reviews`;
 
-        const placeDetailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,reviews,rating,user_ratings_total&key=${GOOGLE_PLACES_API_KEY}`;
-        
-        const response = await fetch(placeDetailsUrl);
-        const data = await response.json();
-
-        if (data.status !== 'OK') {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
-            status: `❌ Google API Error: ${data.status}`,
-            error: true 
-          })}\n\n`));
-          controller.close();
-          return;
-        }
-
-        const placeDetails = data.result;
-        const allReviews = placeDetails.reviews || [];
-
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
-          status: `📊 Found ${allReviews.length} reviews!` 
-        })}\n\n`));
-
-        const reviews = allReviews.map((review: any) => ({
-          author: review.author_name,
-          rating: review.rating,
-          text: review.text,
-          date: new Date(review.time * 1000).toISOString().split('T')[0],
-          platform: 'google',
-          url: review.author_url
-        }));
-
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
-          status: '💾 Saving to database...' 
-        })}\n\n`));
-
-        // Ensure company exists
-        const { data: existingCompany } = await supabase
-          .from('companies')
-          .select('id')
-          .eq('id', companyId)
-          .single();
-
-        if (!existingCompany) {
-          await supabase.from('companies').insert({
-            id: companyId,
-            name: companyName,
-            google_maps_url: googleMapsUrl,
-            yelp_url: yelpUrl,
-            facebook_url: facebookUrl
+          const googleResponse = await fetch('https://google.serper.dev/search', {
+            method: 'POST',
+            headers: {
+              'X-API-KEY': SERPER_API_KEY,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              q: googleQuery,
+              num: 10,
+            }),
           });
-        }
 
-        // Delete old reviews and insert new ones
-        await supabase.from('reviews').delete().eq('company_id', companyId);
-
-        if (reviews.length > 0) {
-          const reviewsToInsert = reviews.map((review: any) => ({
-            company_id: companyId,
-            author: review.author,
-            rating: review.rating,
-            text: review.text,
-            date: review.date,
-            platform: review.platform,
-            url: review.url
-          }));
-
-          const { error } = await supabase.from('reviews').insert(reviewsToInsert);
+          const googleData = await googleResponse.json();
           
-          if (error) {
-            console.error('DB error:', error);
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
-              status: '❌ Database error',
-              error: true 
-            })}\n\n`));
-          } else {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
-              status: `✅ Imported ${reviews.length} reviews successfully!`,
-              complete: true,
-              count: reviews.length 
-            })}\n\n`));
+          if (googleData.organic?.[0]?.link) {
+            foundUrls.google = googleData.organic[0].link;
+            sendLog(`✅ Found Google Maps listing`);
+
+            // Extract reviews from snippets
+            const googleReviews = extractGoogleReviews(googleData, companyName);
+            allReviews.push(...googleReviews);
+            sendLog(`📊 Extracted ${googleReviews.length} Google reviews from search results`);
           }
-        } else {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
-            status: '⚠️ No reviews found',
-            complete: true,
-            count: 0 
-          })}\n\n`));
+        } catch (error) {
+          sendLog('⚠️ Could not fetch Google reviews');
         }
+
+        // Search Yelp Reviews
+        sendLog('🔍 Searching Yelp for reviews...');
+        try {
+          const yelpQuery = existingUrls?.yelp
+            ? `site:yelp.com "${companyName}" reviews`
+            : `"${companyName}" site:yelp.com reviews`;
+
+          const yelpResponse = await fetch('https://google.serper.dev/search', {
+            method: 'POST',
+            headers: {
+              'X-API-KEY': SERPER_API_KEY,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              q: yelpQuery,
+              num: 10,
+            }),
+          });
+
+          const yelpData = await yelpResponse.json();
+          
+          if (yelpData.organic?.[0]?.link) {
+            foundUrls.yelp = yelpData.organic[0].link;
+            sendLog(`✅ Found Yelp listing`);
+
+            const yelpReviews = extractYelpReviews(yelpData, companyName);
+            allReviews.push(...yelpReviews);
+            sendLog(`📊 Extracted ${yelpReviews.length} Yelp reviews from search results`);
+          }
+        } catch (error) {
+          sendLog('⚠️ Could not fetch Yelp reviews');
+        }
+
+        // Search Facebook Reviews
+        sendLog('🔍 Searching Facebook for reviews...');
+        try {
+          const facebookQuery = existingUrls?.facebook
+            ? `site:facebook.com "${companyName}" reviews`
+            : `"${companyName}" site:facebook.com reviews`;
+
+          const facebookResponse = await fetch('https://google.serper.dev/search', {
+            method: 'POST',
+            headers: {
+              'X-API-KEY': SERPER_API_KEY,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              q: facebookQuery,
+              num: 10,
+            }),
+          });
+
+          const facebookData = await facebookResponse.json();
+          
+          if (facebookData.organic?.[0]?.link) {
+            foundUrls.facebook = facebookData.organic[0].link;
+            sendLog(`✅ Found Facebook page`);
+
+            const facebookReviews = extractFacebookReviews(facebookData, companyName);
+            allReviews.push(...facebookReviews);
+            sendLog(`📊 Extracted ${facebookReviews.length} Facebook reviews from search results`);
+          }
+        } catch (error) {
+          sendLog('⚠️ Could not fetch Facebook reviews');
+        }
+
+        sendLog(`🎉 Import complete! Found ${allReviews.length} total reviews`);
+
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
+          complete: true,
+          reviews: allReviews,
+          foundUrls: foundUrls,
+        })}\n\n`));
 
         controller.close();
-      } catch (error) {
-        console.error('Error:', error);
+      } catch (error: any) {
+        console.error('Import error:', error);
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
-          status: '❌ Import failed',
-          error: true 
+          complete: true,
+          reviews: [],
+          error: error.message,
         })}\n\n`));
         controller.close();
       }
@@ -158,35 +163,150 @@ export async function POST(request: NextRequest) {
   });
 }
 
-function extractPlaceIdFromUrl(url: string): string | null {
-  // Method 1: place_id parameter
-  const placeIdParam = url.match(/place_id=([^&]+)/);
-  if (placeIdParam) return placeIdParam[1];
+function extractGoogleReviews(data: any, companyName: string): any[] {
+  const reviews: any[] = [];
   
-  // Method 2: !1s format
-  const placeId1s = url.match(/!1s([A-Za-z0-9_-]+)/);
-  if (placeId1s) return placeId1s[1];
+  // Extract from organic results
+  if (data.organic) {
+    for (const result of data.organic) {
+      if (result.snippet && result.snippet.length > 50) {
+        // Try to extract rating from snippet
+        const ratingMatch = result.snippet.match(/(\d)(?:\.\d)?\s*(?:star|★)/i);
+        const rating = ratingMatch ? parseInt(ratingMatch[1]) : 5;
+
+        reviews.push({
+          id: `google-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          author: extractAuthorName(result.snippet) || 'Google User',
+          rating: rating,
+          text: cleanSnippet(result.snippet),
+          date: extractDate(result.snippet) || new Date().toISOString().split('T')[0],
+          platform: 'google',
+          url: result.link,
+        });
+      }
+    }
+  }
+
+  // Extract from reviews section
+  if (data.reviews) {
+    for (const review of data.reviews) {
+      reviews.push({
+        id: `google-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        author: review.author || 'Google User',
+        rating: review.rating || 5,
+        text: review.snippet || review.text || '',
+        date: review.date || new Date().toISOString().split('T')[0],
+        platform: 'google',
+        url: review.link || '',
+      });
+    }
+  }
+
+  return reviews.slice(0, 20); // Limit to 20 reviews
+}
+
+function extractYelpReviews(data: any, companyName: string): any[] {
+  const reviews: any[] = [];
   
-  // Method 3: /data=!4m format
-  const placeIdData = url.match(/data=.*?!1s([A-Za-z0-9_-]+)/);
-  if (placeIdData) return placeIdData[1];
+  if (data.organic) {
+    for (const result of data.organic) {
+      if (result.snippet && result.snippet.length > 50) {
+        const ratingMatch = result.snippet.match(/(\d)(?:\.\d)?\s*star/i);
+        const rating = ratingMatch ? parseInt(ratingMatch[1]) : 5;
+
+        reviews.push({
+          id: `yelp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          author: extractAuthorName(result.snippet) || 'Yelp User',
+          rating: rating,
+          text: cleanSnippet(result.snippet),
+          date: extractDate(result.snippet) || new Date().toISOString().split('T')[0],
+          platform: 'yelp',
+          url: result.link,
+        });
+      }
+    }
+  }
+
+  return reviews.slice(0, 20);
+}
+
+function extractFacebookReviews(data: any, companyName: string): any[] {
+  const reviews: any[] = [];
   
+  if (data.organic) {
+    for (const result of data.organic) {
+      if (result.snippet && result.snippet.length > 50) {
+        const ratingMatch = result.snippet.match(/(\d)(?:\.\d)?\s*(?:star|★)/i);
+        const rating = ratingMatch ? parseInt(ratingMatch[1]) : 5;
+
+        reviews.push({
+          id: `facebook-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          author: extractAuthorName(result.snippet) || 'Facebook User',
+          rating: rating,
+          text: cleanSnippet(result.snippet),
+          date: extractDate(result.snippet) || new Date().toISOString().split('T')[0],
+          platform: 'facebook',
+          url: result.link,
+        });
+      }
+    }
+  }
+
+  return reviews.slice(0, 20);
+}
+
+function extractAuthorName(text: string): string | null {
+  // Try to extract name patterns
+  const patterns = [
+    /(?:by|from)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/,
+    /^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+(?:said|wrote|reviewed)/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) return match[1];
+  }
+
   return null;
 }
 
-async function searchByText(query: string): Promise<string | null> {
-  try {
-    const searchUrl = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=place_id&key=${GOOGLE_PLACES_API_KEY}`;
-    
-    const response = await fetch(searchUrl);
-    const data = await response.json();
-    
-    if (data.status === 'OK' && data.candidates?.[0]) {
-      return data.candidates[0].place_id;
+function extractDate(text: string): string | null {
+  // Try to extract date patterns
+  const patterns = [
+    /(\d{1,2}\/\d{1,2}\/\d{4})/,
+    /(\w+\s+\d{1,2},\s+\d{4})/,
+    /(\d{4}-\d{2}-\d{2})/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) {
+      try {
+        const date = new Date(match[1]);
+        if (!isNaN(date.getTime())) {
+          return date.toISOString().split('T')[0];
+        }
+      } catch (e) {
+        continue;
+      }
     }
-    
-    return null;
-  } catch (error) {
-    return null;
   }
+
+  return null;
+}
+
+function cleanSnippet(snippet: string): string {
+  // Remove common patterns
+  let cleaned = snippet
+    .replace(/\d+\s*(?:star|★).*?(?:\.|$)/gi, '')
+    .replace(/^.*?(?:said|wrote|reviewed):\s*/i, '')
+    .replace(/^["""]|["""]$/g, '')
+    .trim();
+
+  // Limit length
+  if (cleaned.length > 500) {
+    cleaned = cleaned.substring(0, 500) + '...';
+  }
+
+  return cleaned || snippet;
 }
