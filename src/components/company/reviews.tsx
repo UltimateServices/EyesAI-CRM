@@ -7,7 +7,7 @@ import { Company } from '@/lib/types';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Star, Plus, X, ExternalLink, Filter, Calendar, Download, Loader2, AlertCircle } from 'lucide-react';
+import { Star, Plus, X, ExternalLink, Filter, Calendar, Download, Loader2, AlertCircle, ArrowUpDown } from 'lucide-react';
 
 interface ReviewsProps {
   company: Company;
@@ -31,6 +31,7 @@ export function Reviews({ company }: ReviewsProps) {
   const [isImporting, setIsImporting] = useState(false);
   const [importError, setImportError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
 
   const [formData, setFormData] = useState({
     rating: 5 as 1 | 2 | 3 | 4 | 5,
@@ -224,7 +225,20 @@ export function Reviews({ company }: ReviewsProps) {
     }
   };
 
+  // Filter and sort reviews
   const filteredReviews = filterFiveStarOnly ? reviews.filter(r => r.rating === 5) : reviews;
+  
+  const sortedReviews = [...filteredReviews].sort((a, b) => {
+    const dateA = new Date(a.reviewDate).getTime();
+    const dateB = new Date(b.reviewDate).getTime();
+    
+    if (sortOrder === 'newest') {
+      return dateB - dateA; // Newest first
+    } else {
+      return dateA - dateB; // Oldest first
+    }
+  });
+
   const averageRating = reviews.length > 0 ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1) : '0.0';
   const fiveStarCount = reviews.filter(r => r.rating === 5).length;
 
@@ -345,24 +359,47 @@ export function Reviews({ company }: ReviewsProps) {
 
       <Card className="p-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-slate-600" />
-            <span className="text-sm font-medium text-slate-700">Filter:</span>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-slate-600" />
+              <span className="text-sm font-medium text-slate-700">Filter:</span>
+            </div>
+            <div className="flex gap-2">
+              <Button variant={filterFiveStarOnly ? 'default' : 'outline'} size="sm" onClick={() => setFilterFiveStarOnly(true)}>
+                5-Star Only ({fiveStarCount})
+              </Button>
+              <Button variant={!filterFiveStarOnly ? 'default' : 'outline'} size="sm" onClick={() => setFilterFiveStarOnly(false)}>
+                All Reviews ({reviews.length})
+              </Button>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <Button variant={filterFiveStarOnly ? 'default' : 'outline'} size="sm" onClick={() => setFilterFiveStarOnly(true)}>
-              5-Star Only ({fiveStarCount})
-            </Button>
-            <Button variant={!filterFiveStarOnly ? 'default' : 'outline'} size="sm" onClick={() => setFilterFiveStarOnly(false)}>
-              All Reviews ({reviews.length})
-            </Button>
+          
+          <div className="flex items-center gap-2">
+            <ArrowUpDown className="w-4 h-4 text-slate-600" />
+            <span className="text-sm font-medium text-slate-700">Sort:</span>
+            <div className="flex gap-2">
+              <Button 
+                variant={sortOrder === 'newest' ? 'default' : 'outline'} 
+                size="sm" 
+                onClick={() => setSortOrder('newest')}
+              >
+                Newest First
+              </Button>
+              <Button 
+                variant={sortOrder === 'oldest' ? 'default' : 'outline'} 
+                size="sm" 
+                onClick={() => setSortOrder('oldest')}
+              >
+                Oldest First
+              </Button>
+            </div>
           </div>
         </div>
       </Card>
 
       <div className="space-y-4">
-        {filteredReviews.length > 0 ? (
-          filteredReviews.map((review) => (
+        {sortedReviews.length > 0 ? (
+          sortedReviews.map((review) => (
             <Card key={review.id} className="p-6 hover:shadow-lg transition-shadow">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
@@ -424,22 +461,22 @@ export function Reviews({ company }: ReviewsProps) {
       </div>
 
       <Card className="p-6 bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
-        <h4 className="font-semibold text-slate-900 mb-3">🚀 Smart Import Technology</h4>
+        <h4 className="font-semibold text-slate-900 mb-3">🚀 Hybrid Import Technology</h4>
         <p className="text-sm text-slate-700 mb-3">
-          Our AI-powered system automatically finds and imports reviews from Google, Yelp, and Facebook using multiple search methods.
+          Our system uses premium Apify for Google reviews and free Serper scraping for Yelp/Facebook.
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-slate-700">
           <div className="flex items-start gap-2">
             <span className="text-blue-600 font-bold">✓</span>
-            <span><strong>Smart Search:</strong> Uses name, address, phone, and website</span>
+            <span><strong>Premium Google:</strong> 20 newest reviews via Apify</span>
           </div>
           <div className="flex items-start gap-2">
             <span className="text-blue-600 font-bold">✓</span>
-            <span><strong>Multi-Platform:</strong> Google, Yelp, and Facebook</span>
+            <span><strong>Free Yelp:</strong> 10 reviews via Serper</span>
           </div>
           <div className="flex items-start gap-2">
             <span className="text-blue-600 font-bold">✓</span>
-            <span><strong>Real-Time:</strong> See progress as reviews are imported</span>
+            <span><strong>Free Facebook:</strong> 10 reviews via Serper</span>
           </div>
           <div className="flex items-start gap-2">
             <span className="text-green-600 font-bold">✓</span>
@@ -448,7 +485,7 @@ export function Reviews({ company }: ReviewsProps) {
         </div>
         <div className="mt-4 p-3 bg-white rounded border border-blue-200">
           <p className="text-xs text-slate-600">
-            <strong>💡 Pro Tip:</strong> The more company details you fill in (address, phone, website), the better the search results!
+            <strong>💰 Cost:</strong> ~$0.015 per company (1.5 cents!) for all 3 platforms
           </p>
         </div>
       </Card>
