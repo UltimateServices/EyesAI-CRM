@@ -58,54 +58,69 @@ export async function POST(request: NextRequest) {
           try {
             let searchInput: any = null;
             
-            // Check if we have a valid place URL (not a search URL)
+            // Check if we have a valid place URL
             const hasValidPlaceUrl = existingUrls?.google && 
                                      (existingUrls.google.includes('/maps/place/') ||
                                       existingUrls.google.includes('maps.google.com/maps'));
             
             if (hasValidPlaceUrl) {
-              sendLog(`✅ Valid place URL found in intake`);
-              sendLog(`   ${existingUrls.google.substring(0, 100)}...`);
+              sendLog(`✅ Using saved Google Maps URL`);
               foundUrls.google = existingUrls.google;
               searchInput = {
                 startUrls: [{ url: existingUrls.google }],
+                maxReviews: REVIEW_LIMITS.google,
+                reviewsSort: 'newest',
               };
             } else {
-              // Build comprehensive search query with ALL available data
-              sendLog(`🔍 Building comprehensive search query...`);
+              sendLog(`🔍 Building comprehensive search with ALL business data...`);
               
-              let searchQuery = companyName;
-              const searchDetails = [];
-              
-              // Add address (BEST for accuracy)
+              // Build search query with name + address (BEST for accuracy)
+              let mainQuery = companyName;
               if (companyDetails?.address) {
-                searchQuery = `${companyName}, ${companyDetails.address}`;
-                searchDetails.push(`Address: ${companyDetails.address}`);
+                mainQuery = `${companyName} ${companyDetails.address}`;
+                sendLog(`   📍 Search: "${mainQuery}"`);
+              } else {
+                sendLog(`   📍 Search: "${mainQuery}"`);
               }
               
-              // Add phone (secondary identifier)
-              if (companyDetails?.phone) {
-                searchDetails.push(`Phone: ${companyDetails.phone}`);
-              }
+              // Log all data we're giving to Apify
+              const contextData: any = {};
               
-              // Add website (tertiary identifier)
               if (companyDetails?.website) {
-                searchDetails.push(`Website: ${companyDetails.website}`);
+                contextData.website = companyDetails.website;
+                sendLog(`   🌐 Website: ${companyDetails.website}`);
               }
               
-              sendLog(`   📝 Search Query: "${searchQuery}"`);
-              if (searchDetails.length > 0) {
-                searchDetails.forEach(detail => sendLog(`   📋 ${detail}`));
+              if (companyDetails?.phone) {
+                contextData.phone = companyDetails.phone;
+                sendLog(`   📞 Phone: ${companyDetails.phone}`);
               }
               
+              if (companyDetails?.address) {
+                contextData.fullAddress = companyDetails.address;
+                sendLog(`   📮 Full Address: ${companyDetails.address}`);
+              }
+              
+              // Create Apify input with ALL data
               searchInput = {
-                searchStringsArray: [searchQuery],
+                searchStringsArray: [mainQuery],
+                maxReviews: REVIEW_LIMITS.google,
+                reviewsSort: 'newest',
               };
+              
+              // Add location filter for precision
+              if (companyDetails?.address) {
+                const cityState = extractCityState(companyDetails.address);
+                if (cityState) {
+                  searchInput.location = cityState;
+                  sendLog(`   🎯 Location filter: ${cityState}`);
+                }
+              }
             }
             
             if (searchInput) {
               sendLog('');
-              sendLog(`🔑 Launching Apify Actor...`);
+              sendLog(`🔑 Launching Apify with full context...`);
               sendLog(`🎯 Target: ${REVIEW_LIMITS.google} newest reviews`);
               
               const googleReviews = await scrapeGoogleWithApify(
@@ -124,7 +139,7 @@ export async function POST(request: NextRequest) {
                 }
                 sendLog(`✅ ${googleReviews.reviews.length} Google reviews imported`);
               } else {
-                sendLog('⚠️ Apify returned 0 reviews - business may not have reviews or couldn\'t be found');
+                sendLog('⚠️ No reviews found - business may not exist or have no reviews');
               }
             }
           } catch (error: any) {
@@ -254,34 +269,22 @@ async function scrapeGoogleWithApify(
 ): Promise<{ reviews: Review[]; foundUrl: string | null }> {
   try {
     if (searchInput.startUrls) {
-      sendLog(`   🔗 Mode: Direct URL`);
+      sendLog(`   🔗 Mode: Direct URL (most accurate)`);
     } else if (searchInput.searchStringsArray) {
-      sendLog(`   🔍 Mode: Search`);
-      sendLog(`   📍 Query: "${searchInput.searchStringsArray[0]}"`);
+      sendLog(`   🔍 Mode: Search with context`);
     }
 
-    // Build comprehensive input
+    // Build comprehensive Apify input
     const apifyInput: any = {
       ...searchInput,
-      maxCrawledPlaces: 3, // Get multiple results for verification
+      maxCrawledPlaces: 1, // Get best match only
       language: 'en',
-      maxReviews: limit,
-      reviewsSort: 'newest',
       scrapeReviewerName: true,
       scrapeReviewId: true,
       scrapeReviewUrl: true,
       scrapeReviewDate: true,
       scrapeResponseFromOwnerText: true,
     };
-
-    // Add location filter for better accuracy
-    if (searchInput.searchStringsArray && companyDetails?.address) {
-      const cityState = extractCityState(companyDetails.address);
-      if (cityState) {
-        apifyInput.location = cityState;
-        sendLog(`   🌍 Location filter: ${cityState}`);
-      }
-    }
 
     sendLog('   ⏳ Starting Apify actor...');
 
@@ -342,72 +345,63 @@ async function scrapeGoogleWithApify(
     const results = await resultsResponse.json();
     
     if (!results || results.length === 0) {
-      sendLog(`   ⚠️ Apify returned 0 items`);
+      sendLog(`   ⚠️ Apify returned 0 businesses`);
       return { reviews: [], foundUrl: null };
     }
 
     sendLog(`   📦 Received ${results.length} business result(s)`);
 
-    // ========================================
-    // BUSINESS VERIFICATION - Find correct match
-    // ========================================
-    let matchedBusiness: any = null;
-    
-    if (results.length === 1) {
-      // Only one result, use it
-      matchedBusiness = results[0];
-      sendLog(`   ✅ Single result - using: "${matchedBusiness.title}"`);
-    } else {
-      // Multiple results - verify which is correct
-      sendLog(`   🔍 Verifying correct business from ${results.length} results...`);
-      
-      for (const item of results) {
-        const score = calculateBusinessMatchScore(item, companyName, companyDetails, sendLog);
-        
-        if (score >= 70) {
-          matchedBusiness = item;
-          sendLog(`   ✅ Match found (score: ${score}%): "${item.title}"`);
-          break;
-        } else {
-          sendLog(`   ❌ Rejected (score: ${score}%): "${item.title}"`);
-        }
-      }
-      
-      if (!matchedBusiness && results.length > 0) {
-        sendLog(`   ⚠️ No high-confidence match found - using first result as fallback`);
-        matchedBusiness = results[0];
-      }
-    }
-
-    if (!matchedBusiness) {
-      sendLog(`   ❌ No valid business found`);
-      return { reviews: [], foundUrl: null };
-    }
-
     const reviews: Review[] = [];
     let foundUrl: string | null = null;
     
-    // Capture business details
-    if (matchedBusiness.title) {
-      sendLog(`   🏢 Business: "${matchedBusiness.title}"`);
+    // Use first result (Apify's best match based on our query + location)
+    const item = results[0];
+    
+    // Verify it's the right business using website or phone
+    let isCorrectBusiness = true;
+    
+    if (companyDetails?.website && item.website) {
+      const matchesWebsite = normalizeUrl(item.website) === normalizeUrl(companyDetails.website);
+      if (!matchesWebsite) {
+        sendLog(`   ⚠️ Website mismatch - Found: ${item.website}`);
+        isCorrectBusiness = false;
+      }
     }
-    if (matchedBusiness.totalScore) {
-      sendLog(`   ⭐ Rating: ${matchedBusiness.totalScore} stars`);
+    
+    if (isCorrectBusiness && companyDetails?.phone && item.phone) {
+      const matchesPhone = normalizePhone(item.phone) === normalizePhone(companyDetails.phone);
+      if (!matchesPhone) {
+        sendLog(`   ⚠️ Phone mismatch - Found: ${item.phone}`);
+        isCorrectBusiness = false;
+      }
     }
-    if (matchedBusiness.reviewsCount) {
-      sendLog(`   📊 Total reviews available: ${matchedBusiness.reviewsCount}`);
+    
+    if (!isCorrectBusiness) {
+      sendLog(`   ❌ Business verification failed - skipping reviews`);
+      return { reviews: [], foundUrl: null };
+    }
+    
+    // Log business details
+    if (item.title) {
+      sendLog(`   🏢 Verified: "${item.title}"`);
+    }
+    if (item.totalScore) {
+      sendLog(`   ⭐ Rating: ${item.totalScore} stars`);
+    }
+    if (item.reviewsCount) {
+      sendLog(`   📊 Total reviews available: ${item.reviewsCount}`);
     }
     
     // Capture the Google Maps URL
-    if (matchedBusiness.url) {
-      foundUrl = matchedBusiness.url;
+    if (item.url) {
+      foundUrl = item.url;
     }
     
     // Process reviews
-    if (matchedBusiness.reviews && Array.isArray(matchedBusiness.reviews)) {
+    if (item.reviews && Array.isArray(item.reviews)) {
       sendLog(`   📝 Processing reviews...`);
       
-      const reviewsToProcess = matchedBusiness.reviews.slice(0, limit);
+      const reviewsToProcess = item.reviews.slice(0, limit);
       
       for (const review of reviewsToProcess) {
         if (reviews.length >= limit) break;
@@ -436,120 +430,6 @@ async function scrapeGoogleWithApify(
     console.error('Apify error details:', error);
     return { reviews: [], foundUrl: null };
   }
-}
-
-// ========================================
-// BUSINESS MATCH VERIFICATION
-// ========================================
-function calculateBusinessMatchScore(
-  item: any,
-  companyName: string,
-  companyDetails: any,
-  sendLog: (msg: string) => void
-): number {
-  let score = 0;
-  const maxScore = 100;
-  
-  // Name matching (50 points max)
-  const itemName = (item.title || '').toLowerCase().trim();
-  const searchName = companyName.toLowerCase().trim();
-  
-  if (itemName === searchName) {
-    score += 50;
-  } else if (itemName.includes(searchName) || searchName.includes(itemName)) {
-    score += 35;
-  } else {
-    // Calculate similarity
-    const similarity = calculateStringSimilarity(itemName, searchName);
-    score += Math.floor(similarity * 50);
-  }
-  
-  // Website matching (25 points)
-  if (companyDetails?.website && item.website) {
-    const normalizedItemWebsite = normalizeUrl(item.website);
-    const normalizedSearchWebsite = normalizeUrl(companyDetails.website);
-    
-    if (normalizedItemWebsite === normalizedSearchWebsite) {
-      score += 25;
-    }
-  }
-  
-  // Phone matching (15 points)
-  if (companyDetails?.phone && item.phone) {
-    const normalizedItemPhone = normalizePhone(item.phone);
-    const normalizedSearchPhone = normalizePhone(companyDetails.phone);
-    
-    if (normalizedItemPhone === normalizedSearchPhone) {
-      score += 15;
-    }
-  }
-  
-  // Address matching (10 points)
-  if (companyDetails?.address && item.address) {
-    const itemAddr = item.address.toLowerCase();
-    const searchAddr = companyDetails.address.toLowerCase();
-    
-    // Check if key parts match (city, zip)
-    const zipMatch = /\d{5}/.exec(searchAddr);
-    if (zipMatch && itemAddr.includes(zipMatch[0])) {
-      score += 10;
-    } else if (itemAddr.includes(searchAddr) || searchAddr.includes(itemAddr)) {
-      score += 5;
-    }
-  }
-  
-  return Math.min(score, maxScore);
-}
-
-function calculateStringSimilarity(str1: string, str2: string): number {
-  const longer = str1.length > str2.length ? str1 : str2;
-  const shorter = str1.length > str2.length ? str2 : str1;
-  
-  if (longer.length === 0) return 1.0;
-  
-  const editDistance = getEditDistance(longer, shorter);
-  return (longer.length - editDistance) / longer.length;
-}
-
-function getEditDistance(str1: string, str2: string): number {
-  const matrix: number[][] = [];
-  
-  for (let i = 0; i <= str2.length; i++) {
-    matrix[i] = [i];
-  }
-  
-  for (let j = 0; j <= str1.length; j++) {
-    matrix[0][j] = j;
-  }
-  
-  for (let i = 1; i <= str2.length; i++) {
-    for (let j = 1; j <= str1.length; j++) {
-      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-        matrix[i][j] = matrix[i - 1][j - 1];
-      } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1,
-          matrix[i][j - 1] + 1,
-          matrix[i - 1][j] + 1
-        );
-      }
-    }
-  }
-  
-  return matrix[str2.length][str1.length];
-}
-
-function normalizeUrl(url: string): string {
-  return url
-    .toLowerCase()
-    .replace(/^https?:\/\//, '')
-    .replace(/^www\./, '')
-    .replace(/\/$/, '')
-    .trim();
-}
-
-function normalizePhone(phone: string): string {
-  return phone.replace(/\D/g, '');
 }
 
 // ========================================
@@ -636,6 +516,19 @@ function extractCityState(address: string): string {
 
 function capitalize(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+function normalizeUrl(url: string): string {
+  return url
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/\/$/, '')
+    .trim();
+}
+
+function normalizePhone(phone: string): string {
+  return phone.replace(/\D/g, '');
 }
 
 function extractAuthorName(text: string): string | null {
