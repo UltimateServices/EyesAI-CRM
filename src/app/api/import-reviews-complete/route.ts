@@ -3,223 +3,119 @@ import { NextRequest } from 'next/server';
 const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY;
 const SERPER_API_KEY = process.env.SERPER_API_KEY;
 
+interface Review {
+  id: string;
+  author: string;
+  rating: number;
+  text: string;
+  date: string;
+  platform: string;
+  url: string;
+}
+
 export async function POST(request: NextRequest) {
   const encoder = new TextEncoder();
   const { companyId, companyName, existingUrls, companyDetails } = await request.json();
 
   const stream = new ReadableStream({
     async start(controller) {
+      const sendLog = (message: string) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ searchLog: message })}\n\n`));
+      };
+
       try {
-        const sendLog = (message: string) => {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ searchLog: message })}\n\n`));
-        };
+        sendLog(`🚀 Starting Smart Import for: ${companyName}`);
+        sendLog(`📋 Data: ${companyDetails?.address || 'No address'}, ${companyDetails?.phone || 'No phone'}`);
 
-        sendLog(`🚀 Starting smart import for ${companyName}`);
-
-        const allReviews: any[] = [];
+        const allReviews: Review[] = [];
         const foundUrls: any = {
           google: existingUrls?.google || null,
           yelp: existingUrls?.yelp || null,
           facebook: existingUrls?.facebook || null,
         };
 
-        // ===== GOOGLE REVIEWS - Use Google Places API =====
-        if (GOOGLE_PLACES_API_KEY) {
-          sendLog('🔍 Searching Google Places for reviews...');
-          try {
-            let placeId = null;
+        // ========================================
+        // GOOGLE REVIEWS - Multi-Method Approach
+        // ========================================
+        sendLog('');
+        sendLog('═══════════════════════════════════');
+        sendLog('📍 GOOGLE MAPS SEARCH');
+        sendLog('═══════════════════════════════════');
 
-            // Try to get place ID from URL first
-            if (existingUrls?.google) {
-              let googleUrl = existingUrls.google;
-              
-              if (googleUrl.includes('share.google') || googleUrl.includes('goo.gl') || googleUrl.includes('maps.app.goo.gl')) {
-                sendLog('🔗 Expanding shortened Google link...');
-                const expandedUrl = await expandShortenedUrl(googleUrl);
-                if (expandedUrl) {
-                  googleUrl = expandedUrl;
-                  foundUrls.google = expandedUrl;
-                  sendLog(`✅ Expanded URL`);
-                }
-              }
-              
-              placeId = extractPlaceIdFromUrl(googleUrl);
-              if (placeId) sendLog('✅ Extracted Place ID from URL');
-            }
+        const googleReviews = await fetchGoogleReviews(
+          companyName,
+          companyDetails,
+          existingUrls?.google,
+          sendLog
+        );
 
-            // If no place ID, use advanced search methods
-            if (!placeId) {
-              // Get coordinates from address for location-based search
-              let coordinates = null;
-              if (companyDetails?.address) {
-                sendLog('📍 Getting coordinates from address...');
-                coordinates = await geocodeAddress(companyDetails.address);
-                if (coordinates) {
-                  sendLog(`✅ Coordinates: ${coordinates.lat}, ${coordinates.lng}`);
-                }
-              }
-
-              // Method 1: Text Search with coordinates (BEST METHOD)
-              if (coordinates) {
-                sendLog('🔍 Method 1: Searching with name + coordinates...');
-                placeId = await textSearchPlaces(`${companyName}`, coordinates);
-              }
-
-              // Method 2: Text Search with full address
-              if (!placeId && companyDetails?.address) {
-                sendLog('🔍 Method 2: Searching with name + full address...');
-                placeId = await textSearchPlaces(`${companyName} ${companyDetails.address}`);
-              }
-
-              // Method 3: Find Place with phone number
-              if (!placeId && companyDetails?.phone) {
-                sendLog('🔍 Method 3: Searching by phone number...');
-                placeId = await findPlaceByPhone(companyDetails.phone);
-              }
-
-              // Method 4: Text Search with name + city/state
-              if (!placeId && companyDetails?.address) {
-                const cityState = extractCityState(companyDetails.address);
-                if (cityState) {
-                  sendLog(`🔍 Method 4: Searching with name + ${cityState}...`);
-                  placeId = await textSearchPlaces(`${companyName} ${cityState}`);
-                }
-              }
-
-              // Method 5: Find Place with just name
-              if (!placeId) {
-                sendLog('🔍 Method 5: Searching by name only...');
-                placeId = await findPlaceFromText(companyName);
-              }
-            }
-
-            if (placeId) {
-              sendLog('✅ Found Google Place! Fetching reviews...');
-              
-              const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,reviews,rating,user_ratings_total,url,formatted_address,formatted_phone_number&key=${GOOGLE_PLACES_API_KEY}`;
-              const detailsResponse = await fetch(detailsUrl);
-              const detailsData = await detailsResponse.json();
-
-              if (detailsData.status === 'OK' && detailsData.result) {
-                foundUrls.google = detailsData.result.url || foundUrls.google;
-                
-                sendLog(`📍 Found: ${detailsData.result.name}`);
-                sendLog(`📍 Address: ${detailsData.result.formatted_address}`);
-                
-                if (detailsData.result.reviews && detailsData.result.reviews.length > 0) {
-                  const googleReviews = detailsData.result.reviews.map((review: any) => ({
-                    id: `google-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                    author: review.author_name || 'Google User',
-                    rating: review.rating || 5,
-                    text: review.text || '',
-                    date: review.time ? new Date(review.time * 1000).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-                    platform: 'google',
-                    url: review.author_url || foundUrls.google,
-                  }));
-
-                  allReviews.push(...googleReviews);
-                  sendLog(`📊 Found ${googleReviews.length} Google reviews`);
-                } else {
-                  sendLog('⚠️ Google Place found but has 0 reviews on Google');
-                }
-              }
-            } else {
-              sendLog('❌ Could not find Google Place after all search methods');
-              sendLog('💡 Tip: Add the exact Google Maps URL in Intake → Part 7');
-            }
-          } catch (error: any) {
-            sendLog(`⚠️ Google Places API error: ${error.message}`);
-          }
+        if (googleReviews.reviews.length > 0) {
+          allReviews.push(...googleReviews.reviews);
+          foundUrls.google = googleReviews.url;
+          sendLog(`✅ SUCCESS: Found ${googleReviews.reviews.length} Google reviews`);
         } else {
-          sendLog('⚠️ Google Places API key not configured');
+          sendLog(`⚠️ No Google reviews found`);
         }
 
-        // ===== YELP & FACEBOOK REVIEWS - Use Serper API =====
+        // ========================================
+        // YELP REVIEWS - Serper Search
+        // ========================================
         if (SERPER_API_KEY) {
-          // Search Yelp
-          sendLog('🔍 Searching Yelp for reviews...');
-          try {
-            let yelpQuery = `"${companyName}" site:yelp.com`;
-            
-            if (companyDetails?.address) {
-              const cityState = extractCityState(companyDetails.address);
-              if (cityState) {
-                yelpQuery = `"${companyName}" ${cityState} site:yelp.com`;
-              }
-            }
+          sendLog('');
+          sendLog('═══════════════════════════════════');
+          sendLog('📍 YELP SEARCH');
+          sendLog('═══════════════════════════════════');
 
-            const yelpResponse = await fetch('https://google.serper.dev/search', {
-              method: 'POST',
-              headers: {
-                'X-API-KEY': SERPER_API_KEY,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                q: yelpQuery,
-                num: 10,
-              }),
-            });
+          const yelpReviews = await fetchYelpReviews(
+            companyName,
+            companyDetails,
+            sendLog
+          );
 
-            const yelpData = await yelpResponse.json();
-            
-            if (yelpData.organic?.[0]?.link) {
-              foundUrls.yelp = yelpData.organic[0].link;
-              sendLog(`✅ Found Yelp listing`);
-
-              const yelpReviews = extractReviewsFromSearch(yelpData, 'yelp');
-              allReviews.push(...yelpReviews);
-              sendLog(`📊 Extracted ${yelpReviews.length} Yelp reviews`);
-            } else {
-              sendLog('⚠️ Could not find Yelp listing');
-            }
-          } catch (error) {
-            sendLog('⚠️ Could not fetch Yelp reviews');
+          if (yelpReviews.reviews.length > 0) {
+            allReviews.push(...yelpReviews.reviews);
+            foundUrls.yelp = yelpReviews.url;
+            sendLog(`✅ SUCCESS: Found ${yelpReviews.reviews.length} Yelp reviews`);
+          } else {
+            sendLog(`⚠️ No Yelp reviews found`);
           }
-
-          // Search Facebook
-          sendLog('🔍 Searching Facebook for reviews...');
-          try {
-            let facebookQuery = `"${companyName}" site:facebook.com`;
-            
-            if (companyDetails?.address) {
-              const cityState = extractCityState(companyDetails.address);
-              if (cityState) {
-                facebookQuery = `"${companyName}" ${cityState} site:facebook.com`;
-              }
-            }
-
-            const facebookResponse = await fetch('https://google.serper.dev/search', {
-              method: 'POST',
-              headers: {
-                'X-API-KEY': SERPER_API_KEY,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                q: facebookQuery,
-                num: 10,
-              }),
-            });
-
-            const facebookData = await facebookResponse.json();
-            
-            if (facebookData.organic?.[0]?.link) {
-              foundUrls.facebook = facebookData.organic[0].link;
-              sendLog(`✅ Found Facebook page`);
-
-              const facebookReviews = extractReviewsFromSearch(facebookData, 'facebook');
-              allReviews.push(...facebookReviews);
-              sendLog(`📊 Extracted ${facebookReviews.length} Facebook reviews`);
-            } else {
-              sendLog('⚠️ Could not find Facebook page');
-            }
-          } catch (error) {
-            sendLog('⚠️ Could not fetch Facebook reviews');
-          }
-        } else {
-          sendLog('⚠️ Serper API key not configured - skipping Yelp/Facebook');
         }
 
-        sendLog(`🎉 Import complete! Found ${allReviews.length} total reviews`);
+        // ========================================
+        // FACEBOOK REVIEWS - Serper Search
+        // ========================================
+        if (SERPER_API_KEY) {
+          sendLog('');
+          sendLog('═══════════════════════════════════');
+          sendLog('📍 FACEBOOK SEARCH');
+          sendLog('═══════════════════════════════════');
+
+          const facebookReviews = await fetchFacebookReviews(
+            companyName,
+            companyDetails,
+            sendLog
+          );
+
+          if (facebookReviews.reviews.length > 0) {
+            allReviews.push(...facebookReviews.reviews);
+            foundUrls.facebook = facebookReviews.url;
+            sendLog(`✅ SUCCESS: Found ${facebookReviews.reviews.length} Facebook reviews`);
+          } else {
+            sendLog(`⚠️ No Facebook reviews found`);
+          }
+        }
+
+        // ========================================
+        // FINAL RESULTS
+        // ========================================
+        sendLog('');
+        sendLog('═══════════════════════════════════');
+        sendLog('🎉 IMPORT COMPLETE');
+        sendLog('═══════════════════════════════════');
+        sendLog(`📊 Total Reviews Found: ${allReviews.length}`);
+        sendLog(`   - Google: ${allReviews.filter(r => r.platform === 'google').length}`);
+        sendLog(`   - Yelp: ${allReviews.filter(r => r.platform === 'yelp').length}`);
+        sendLog(`   - Facebook: ${allReviews.filter(r => r.platform === 'facebook').length}`);
 
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
           complete: true,
@@ -229,6 +125,7 @@ export async function POST(request: NextRequest) {
 
         controller.close();
       } catch (error: any) {
+        sendLog(`❌ CRITICAL ERROR: ${error.message}`);
         console.error('Import error:', error);
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
           complete: true,
@@ -249,161 +146,426 @@ export async function POST(request: NextRequest) {
   });
 }
 
-// Geocode address to get coordinates
-async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
-  try {
-    const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_PLACES_API_KEY}`;
-    const response = await fetch(geocodeUrl);
-    const data = await response.json();
-    
-    if (data.status === 'OK' && data.results?.[0]?.geometry?.location) {
-      return {
-        lat: data.results[0].geometry.location.lat,
-        lng: data.results[0].geometry.location.lng,
-      };
+// ========================================
+// GOOGLE REVIEWS FETCHER
+// ========================================
+async function fetchGoogleReviews(
+  companyName: string,
+  companyDetails: any,
+  existingUrl: string | null,
+  sendLog: (msg: string) => void
+): Promise<{ reviews: Review[]; url: string | null }> {
+  
+  let googleMapUrl = existingUrl;
+  let placeId = null;
+
+  // STEP 1: Handle existing URL
+  if (googleMapUrl) {
+    sendLog(`📎 Existing URL provided: ${googleMapUrl.substring(0, 60)}...`);
+
+    // Expand share links
+    if (googleMapUrl.includes('share.google') || googleMapUrl.includes('goo.gl') || googleMapUrl.includes('maps.app.goo.gl')) {
+      sendLog('🔗 Expanding shortened link...');
+      const expanded = await expandUrl(googleMapUrl);
+      if (expanded && expanded !== googleMapUrl) {
+        googleMapUrl = expanded;
+        sendLog(`✅ Expanded to: ${expanded.substring(0, 60)}...`);
+      } else {
+        sendLog('⚠️ Could not expand link, using original');
+      }
     }
-    
-    return null;
-  } catch (error) {
-    return null;
-  }
-}
 
-// Text Search API - BEST for finding businesses with location
-async function textSearchPlaces(query: string, location?: { lat: number; lng: number }): Promise<string | null> {
-  try {
-    let searchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&key=${GOOGLE_PLACES_API_KEY}`;
-    
-    // Add location bias if available
-    if (location) {
-      searchUrl += `&location=${location.lat},${location.lng}&radius=1000`;
+    // Extract place_id
+    placeId = extractPlaceId(googleMapUrl);
+    if (placeId) {
+      sendLog(`✅ Extracted Place ID: ${placeId}`);
     }
-    
-    const response = await fetch(searchUrl);
-    const data = await response.json();
-    
-    if (data.status === 'OK' && data.results?.[0]) {
-      return data.results[0].place_id;
+  }
+
+  // STEP 2: Try Google Places API with place_id
+  if (placeId && GOOGLE_PLACES_API_KEY) {
+    sendLog('🔑 Method 1: Google Places API with Place ID...');
+    const reviews = await getPlaceDetails(placeId, googleMapUrl, sendLog);
+    if (reviews.length > 0) {
+      return { reviews, url: googleMapUrl };
     }
-    
-    return null;
-  } catch (error) {
-    return null;
   }
-}
 
-// Find Place by phone number
-async function findPlaceByPhone(phone: string): Promise<string | null> {
-  try {
-    // Clean phone number (remove spaces, dashes, etc)
-    const cleanPhone = phone.replace(/[\s\-\(\)]/g, '');
+  // STEP 3: Try Google Places API Text Search with address
+  if (GOOGLE_PLACES_API_KEY && companyDetails?.address) {
+    sendLog('🔍 Method 2: Google Places Text Search (name + address)...');
+    const searchQuery = `${companyName} ${companyDetails.address}`;
+    placeId = await textSearchPlaces(searchQuery, sendLog);
     
-    const searchUrl = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(cleanPhone)}&inputtype=phonenumber&fields=place_id&key=${GOOGLE_PLACES_API_KEY}`;
-    const response = await fetch(searchUrl);
-    const data = await response.json();
-    
-    if (data.status === 'OK' && data.candidates?.[0]) {
-      return data.candidates[0].place_id;
-    }
-    
-    return null;
-  } catch (error) {
-    return null;
-  }
-}
-
-// Find Place from text (fallback)
-async function findPlaceFromText(query: string): Promise<string | null> {
-  try {
-    const searchUrl = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=place_id,name,formatted_address&key=${GOOGLE_PLACES_API_KEY}`;
-    const response = await fetch(searchUrl);
-    const data = await response.json();
-    
-    if (data.status === 'OK' && data.candidates?.[0]) {
-      return data.candidates[0].place_id;
-    }
-    
-    return null;
-  } catch (error) {
-    return null;
-  }
-}
-
-async function expandShortenedUrl(shortUrl: string): Promise<string | null> {
-  try {
-    const response = await fetch(shortUrl, {
-      method: 'HEAD',
-      redirect: 'follow',
-    });
-    
-    return response.url || null;
-  } catch (error) {
-    return null;
-  }
-}
-
-function extractPlaceIdFromUrl(url: string): string | null {
-  const placeIdParam = url.match(/place_id=([^&]+)/);
-  if (placeIdParam) return placeIdParam[1];
-  
-  const placeId1s = url.match(/!1s([A-Za-z0-9_-]+)/);
-  if (placeId1s) return placeId1s[1];
-  
-  const placeIdData = url.match(/data=.*?!1s([A-Za-z0-9_-]+)/);
-  if (placeIdData) return placeIdData[1];
-  
-  return null;
-}
-
-function extractCityState(address: string): string | null {
-  const parts = address.split(',').map(p => p.trim());
-  
-  if (parts.length >= 2) {
-    const cityState = parts.slice(-2).join(', ');
-    return cityState;
-  }
-  
-  return null;
-}
-
-function extractDomain(website: string): string | null {
-  try {
-    const url = new URL(website.startsWith('http') ? website : `https://${website}`);
-    return url.hostname.replace('www.', '');
-  } catch (e) {
-    return null;
-  }
-}
-
-function extractReviewsFromSearch(data: any, platform: string): any[] {
-  const reviews: any[] = [];
-  
-  if (data.organic) {
-    for (const result of data.organic) {
-      if (result.snippet && result.snippet.length > 50) {
-        const ratingMatch = result.snippet.match(/(\d)(?:\.\d)?\s*(?:star|★)/i);
-        const rating = ratingMatch ? parseInt(ratingMatch[1]) : 5;
-
-        reviews.push({
-          id: `${platform}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          author: extractAuthorName(result.snippet) || `${platform.charAt(0).toUpperCase() + platform.slice(1)} User`,
-          rating: rating,
-          text: cleanSnippet(result.snippet),
-          date: extractDate(result.snippet) || new Date().toISOString().split('T')[0],
-          platform: platform,
-          url: result.link,
-        });
+    if (placeId) {
+      const reviews = await getPlaceDetails(placeId, googleMapUrl, sendLog);
+      if (reviews.length > 0) {
+        return { reviews, url: googleMapUrl };
       }
     }
   }
 
-  return reviews.slice(0, 15);
+  // STEP 4: Try Geocoding + Location-based search
+  if (GOOGLE_PLACES_API_KEY && companyDetails?.address) {
+    sendLog('🗺️ Method 3: Geocoding + Location-based search...');
+    const coords = await geocodeAddress(companyDetails.address, sendLog);
+    
+    if (coords) {
+      placeId = await nearbySearch(companyName, coords, sendLog);
+      
+      if (placeId) {
+        const reviews = await getPlaceDetails(placeId, googleMapUrl, sendLog);
+        if (reviews.length > 0) {
+          return { reviews, url: googleMapUrl };
+        }
+      }
+    }
+  }
+
+  // STEP 5: Try phone number search
+  if (GOOGLE_PLACES_API_KEY && companyDetails?.phone) {
+    sendLog('📞 Method 4: Phone number search...');
+    placeId = await findPlaceByPhone(companyDetails.phone, sendLog);
+    
+    if (placeId) {
+      const reviews = await getPlaceDetails(placeId, googleMapUrl, sendLog);
+      if (reviews.length > 0) {
+        return { reviews, url: googleMapUrl };
+      }
+    }
+  }
+
+  // STEP 6: Use Serper to search and scrape
+  if (SERPER_API_KEY) {
+    sendLog('🌐 Method 5: Serper web search...');
+    
+    const searchQuery = companyDetails?.address
+      ? `"${companyName}" ${companyDetails.address} site:google.com/maps`
+      : `"${companyName}" site:google.com/maps`;
+    
+    sendLog(`   Query: ${searchQuery}`);
+    
+    const serperResults = await serperSearch(searchQuery, sendLog);
+    
+    if (serperResults.url) {
+      googleMapUrl = serperResults.url;
+      sendLog(`✅ Found Google Maps URL via Serper`);
+      
+      // Try to get place_id from this URL
+      placeId = extractPlaceId(googleMapUrl);
+      if (placeId && GOOGLE_PLACES_API_KEY) {
+        const reviews = await getPlaceDetails(placeId, googleMapUrl, sendLog);
+        if (reviews.length > 0) {
+          return { reviews, url: googleMapUrl };
+        }
+      }
+    }
+    
+    // Use reviews from Serper search results
+    if (serperResults.reviews.length > 0) {
+      sendLog(`✅ Extracted ${serperResults.reviews.length} reviews from search results`);
+      return { reviews: serperResults.reviews, url: googleMapUrl };
+    }
+  }
+
+  sendLog('❌ All Google search methods exhausted');
+  return { reviews: [], url: googleMapUrl };
+}
+
+// ========================================
+// YELP REVIEWS FETCHER
+// ========================================
+async function fetchYelpReviews(
+  companyName: string,
+  companyDetails: any,
+  sendLog: (msg: string) => void
+): Promise<{ reviews: Review[]; url: string | null }> {
+  
+  if (!SERPER_API_KEY) {
+    sendLog('⚠️ Serper API key not configured');
+    return { reviews: [], url: null };
+  }
+
+  const cityState = companyDetails?.address ? extractCityState(companyDetails.address) : '';
+  const searchQuery = cityState
+    ? `"${companyName}" ${cityState} site:yelp.com`
+    : `"${companyName}" site:yelp.com`;
+
+  sendLog(`🔍 Searching: ${searchQuery}`);
+
+  const results = await serperSearch(searchQuery, sendLog);
+  
+  if (results.url) {
+    sendLog(`✅ Found Yelp URL: ${results.url.substring(0, 60)}...`);
+  }
+
+  return { reviews: results.reviews, url: results.url };
+}
+
+// ========================================
+// FACEBOOK REVIEWS FETCHER
+// ========================================
+async function fetchFacebookReviews(
+  companyName: string,
+  companyDetails: any,
+  sendLog: (msg: string) => void
+): Promise<{ reviews: Review[]; url: string | null }> {
+  
+  if (!SERPER_API_KEY) {
+    sendLog('⚠️ Serper API key not configured');
+    return { reviews: [], url: null };
+  }
+
+  const cityState = companyDetails?.address ? extractCityState(companyDetails.address) : '';
+  const searchQuery = cityState
+    ? `"${companyName}" ${cityState} site:facebook.com`
+    : `"${companyName}" site:facebook.com`;
+
+  sendLog(`🔍 Searching: ${searchQuery}`);
+
+  const results = await serperSearch(searchQuery, sendLog);
+  
+  if (results.url) {
+    sendLog(`✅ Found Facebook URL: ${results.url.substring(0, 60)}...`);
+  }
+
+  return { reviews: results.reviews, url: results.url };
+}
+
+// ========================================
+// HELPER FUNCTIONS
+// ========================================
+
+async function expandUrl(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url, {
+      method: 'HEAD',
+      redirect: 'follow',
+    });
+    return response.url;
+  } catch (error) {
+    return null;
+  }
+}
+
+function extractPlaceId(url: string): string | null {
+  const patterns = [
+    /place_id=([A-Za-z0-9_-]+)/,
+    /!1s([A-Za-z0-9_-]+)(?:!|$)/,
+    /ftid=([A-Za-z0-9_:]+)/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) return match[1];
+  }
+
+  return null;
+}
+
+async function getPlaceDetails(placeId: string, url: string | null, sendLog: (msg: string) => void): Promise<Review[]> {
+  try {
+    const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,reviews,rating,user_ratings_total,url,formatted_address&key=${GOOGLE_PLACES_API_KEY}`;
+    
+    const response = await fetch(detailsUrl);
+    const data = await response.json();
+
+    if (data.status === 'OK' && data.result) {
+      sendLog(`   ✓ Found: ${data.result.name}`);
+      sendLog(`   ✓ Address: ${data.result.formatted_address || 'N/A'}`);
+      sendLog(`   ✓ Rating: ${data.result.rating || 'N/A'} (${data.result.user_ratings_total || 0} reviews)`);
+
+      if (data.result.reviews && data.result.reviews.length > 0) {
+        return data.result.reviews.map((review: any) => ({
+          id: `google-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          author: review.author_name || 'Google User',
+          rating: review.rating || 5,
+          text: review.text || '',
+          date: review.time ? new Date(review.time * 1000).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+          platform: 'google',
+          url: review.author_url || url || data.result.url || '',
+        }));
+      } else {
+        sendLog('   ⚠️ Place found but has 0 reviews');
+      }
+    } else {
+      sendLog(`   ✗ API returned: ${data.status}`);
+    }
+  } catch (error) {
+    sendLog(`   ✗ Error: ${error}`);
+  }
+
+  return [];
+}
+
+async function textSearchPlaces(query: string, sendLog: (msg: string) => void): Promise<string | null> {
+  try {
+    const searchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&key=${GOOGLE_PLACES_API_KEY}`;
+    
+    const response = await fetch(searchUrl);
+    const data = await response.json();
+
+    if (data.status === 'OK' && data.results?.[0]) {
+      sendLog(`   ✓ Found place via text search`);
+      return data.results[0].place_id;
+    } else {
+      sendLog(`   ✗ Text search returned: ${data.status}`);
+    }
+  } catch (error) {
+    sendLog(`   ✗ Text search error: ${error}`);
+  }
+
+  return null;
+}
+
+async function geocodeAddress(address: string, sendLog: (msg: string) => void): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_PLACES_API_KEY}`;
+    
+    const response = await fetch(geocodeUrl);
+    const data = await response.json();
+
+    if (data.status === 'OK' && data.results?.[0]?.geometry?.location) {
+      const location = data.results[0].geometry.location;
+      sendLog(`   ✓ Geocoded to: ${location.lat}, ${location.lng}`);
+      return location;
+    } else {
+      sendLog(`   ✗ Geocoding failed: ${data.status}`);
+    }
+  } catch (error) {
+    sendLog(`   ✗ Geocoding error: ${error}`);
+  }
+
+  return null;
+}
+
+async function nearbySearch(name: string, location: { lat: number; lng: number }, sendLog: (msg: string) => void): Promise<string | null> {
+  try {
+    const searchUrl = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${location.lat},${location.lng}&radius=500&keyword=${encodeURIComponent(name)}&key=${GOOGLE_PLACES_API_KEY}`;
+    
+    const response = await fetch(searchUrl);
+    const data = await response.json();
+
+    if (data.status === 'OK' && data.results?.[0]) {
+      sendLog(`   ✓ Found via nearby search`);
+      return data.results[0].place_id;
+    } else {
+      sendLog(`   ✗ Nearby search returned: ${data.status}`);
+    }
+  } catch (error) {
+    sendLog(`   ✗ Nearby search error: ${error}`);
+  }
+
+  return null;
+}
+
+async function findPlaceByPhone(phone: string, sendLog: (msg: string) => void): Promise<string | null> {
+  try {
+    const cleanPhone = phone.replace(/[\s\-\(\)]/g, '');
+    const searchUrl = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(cleanPhone)}&inputtype=phonenumber&fields=place_id&key=${GOOGLE_PLACES_API_KEY}`;
+    
+    const response = await fetch(searchUrl);
+    const data = await response.json();
+
+    if (data.status === 'OK' && data.candidates?.[0]) {
+      sendLog(`   ✓ Found via phone number`);
+      return data.candidates[0].place_id;
+    } else {
+      sendLog(`   ✗ Phone search returned: ${data.status}`);
+    }
+  } catch (error) {
+    sendLog(`   ✗ Phone search error: ${error}`);
+  }
+
+  return null;
+}
+
+async function serperSearch(query: string, sendLog: (msg: string) => void): Promise<{ reviews: Review[]; url: string | null }> {
+  try {
+    const response = await fetch('https://google.serper.dev/search', {
+      method: 'POST',
+      headers: {
+        'X-API-KEY': SERPER_API_KEY!,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        q: query,
+        num: 20,
+      }),
+    });
+
+    const data = await response.json();
+    const reviews: Review[] = [];
+    let url: string | null = null;
+
+    // Get URL from first result
+    if (data.organic?.[0]?.link) {
+      url = data.organic[0].link;
+    }
+
+    // Extract reviews from search results
+    const platform = query.includes('yelp.com') ? 'yelp' : query.includes('facebook.com') ? 'facebook' : 'google';
+
+    if (data.organic) {
+      for (const result of data.organic) {
+        if (result.snippet && result.snippet.length > 50) {
+          const ratingMatch = result.snippet.match(/(\d)(?:\.\d)?\s*(?:star|★|stars)/i);
+          
+          if (ratingMatch) {
+            const rating = parseInt(ratingMatch[1]);
+            const text = cleanReviewText(result.snippet);
+            
+            if (text.length > 20) {
+              reviews.push({
+                id: `${platform}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                author: extractAuthorName(result.snippet) || `${platform.charAt(0).toUpperCase() + platform.slice(1)} User`,
+                rating: rating,
+                text: text,
+                date: extractDate(result.snippet) || new Date().toISOString().split('T')[0],
+                platform: platform,
+                url: result.link || url || '',
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Check knowledge graph for reviews
+    if (data.knowledgeGraph?.reviews) {
+      for (const review of data.knowledgeGraph.reviews) {
+        reviews.push({
+          id: `${platform}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          author: review.author || 'User',
+          rating: review.rating || 5,
+          text: review.snippet || review.text || '',
+          date: review.date || new Date().toISOString().split('T')[0],
+          platform: platform,
+          url: url || '',
+        });
+      }
+    }
+
+    sendLog(`   ✓ Serper returned ${reviews.length} reviews`);
+    return { reviews: reviews.slice(0, 20), url };
+  } catch (error) {
+    sendLog(`   ✗ Serper error: ${error}`);
+    return { reviews: [], url: null };
+  }
+}
+
+function extractCityState(address: string): string {
+  const parts = address.split(',').map(p => p.trim());
+  if (parts.length >= 2) {
+    return parts.slice(-2).join(', ');
+  }
+  return '';
 }
 
 function extractAuthorName(text: string): string | null {
   const patterns = [
-    /(?:by|from)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/,
-    /^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+(?:said|wrote|reviewed)/,
+    /(?:by|from|—)\s+([A-Z][a-z]+(?:\s+[A-Z]\.?)?)/,
+    /^([A-Z][a-z]+(?:\s+[A-Z]\.?)?)\s+(?:said|wrote|reviewed|says)/,
   ];
 
   for (const pattern of patterns) {
@@ -419,12 +581,17 @@ function extractDate(text: string): string | null {
     /(\d{1,2}\/\d{1,2}\/\d{4})/,
     /(\w+\s+\d{1,2},\s+\d{4})/,
     /(\d{4}-\d{2}-\d{2})/,
+    /(\d+)\s+(?:day|week|month|year)s?\s+ago/i,
   ];
 
   for (const pattern of patterns) {
     const match = text.match(pattern);
     if (match) {
       try {
+        if (match[0].includes('ago')) {
+          return new Date().toISOString().split('T')[0];
+        }
+        
         const date = new Date(match[1]);
         if (!isNaN(date.getTime())) {
           return date.toISOString().split('T')[0];
@@ -438,16 +605,18 @@ function extractDate(text: string): string | null {
   return null;
 }
 
-function cleanSnippet(snippet: string): string {
-  let cleaned = snippet
-    .replace(/\d+\s*(?:star|★).*?(?:\.|$)/gi, '')
-    .replace(/^.*?(?:said|wrote|reviewed):\s*/i, '')
+function cleanReviewText(text: string): string {
+  let cleaned = text
+    .replace(/\d+\s*(?:star|★|stars).*?(?:\.|$)/gi, '')
+    .replace(/^.*?(?:said|wrote|reviewed|says):\s*/i, '')
+    .replace(/Rating:\s*\d+/gi, '')
     .replace(/^["""]|["""]$/g, '')
+    .replace(/\s+/g, ' ')
     .trim();
 
   if (cleaned.length > 500) {
     cleaned = cleaned.substring(0, 500) + '...';
   }
 
-  return cleaned || snippet;
+  return cleaned;
 }
