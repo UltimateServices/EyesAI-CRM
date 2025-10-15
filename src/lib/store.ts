@@ -1,10 +1,12 @@
 import { create } from 'zustand';
-import { Company, Intake } from './types';
+import { Company, Intake, Review } from './types';
 import { supabase } from './supabase';
 
 interface StoreState {
   companies: Company[];
   intakes: Intake[];
+  reviews: Review[];
+  tasks: any[];
   
   // Company methods
   fetchCompanies: () => Promise<void>;
@@ -17,11 +19,19 @@ interface StoreState {
   getIntakeByCompanyId: (companyId: string) => Intake | undefined;
   saveIntake: (intake: Intake) => Promise<void>;
   updateCompanyFromIntake: (companyId: string, intake: Intake) => Promise<void>;
+
+  // Review methods
+  fetchReviews: () => Promise<void>;
+  addReview: (review: Omit<Review, 'id' | 'createdAt'>) => Promise<void>;
+  updateReview: (id: string, updates: Partial<Review>) => Promise<void>;
+  deleteReview: (id: string) => Promise<void>;
 }
 
 export const useStore = create<StoreState>((set, get) => ({
   companies: [],
   intakes: [],
+  reviews: [],
+  tasks: [],
 
   // Fetch all companies from Supabase
   fetchCompanies: async () => {
@@ -224,5 +234,105 @@ export const useStore = create<StoreState>((set, get) => ({
       phone: intake.mainPhone || '',
       address: intake.physicalAddress || '',
     });
+  },
+
+  // Fetch all reviews
+  fetchReviews: async () => {
+    if (!supabase) return;
+    
+    const { data, error } = await supabase
+      .from('reviews')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching reviews:', error);
+      return;
+    }
+
+    const reviews: Review[] = (data || []).map((row: any) => ({
+      id: row.id,
+      companyId: row.company_id,
+      platform: row.platform,
+      rating: row.rating,
+      reviewerName: row.reviewer_name,
+      reviewText: row.review_text,
+      reviewDate: row.review_date,
+      reviewUrl: row.review_url || '',
+      response: row.response || '',
+      responseDate: row.response_date || '',
+      createdAt: row.created_at,
+    }));
+
+    set({ reviews });
+  },
+
+  // Add review
+  addReview: async (review) => {
+    if (!supabase) return;
+
+    const { error } = await supabase
+      .from('reviews')
+      .insert([{
+        company_id: review.companyId,
+        platform: review.platform,
+        rating: review.rating,
+        reviewer_name: review.reviewerName,
+        review_text: review.reviewText,
+        review_date: review.reviewDate,
+        review_url: review.reviewUrl || null,
+        response: review.response || null,
+        response_date: review.responseDate || null,
+      }]);
+
+    if (error) {
+      console.error('Error adding review:', error);
+      return;
+    }
+
+    await get().fetchReviews();
+  },
+
+  // Update review
+  updateReview: async (id, updates) => {
+    if (!supabase) return;
+
+    const { error } = await supabase
+      .from('reviews')
+      .update({
+        platform: updates.platform,
+        rating: updates.rating,
+        reviewer_name: updates.reviewerName,
+        review_text: updates.reviewText,
+        review_date: updates.reviewDate,
+        review_url: updates.reviewUrl,
+        response: updates.response,
+        response_date: updates.responseDate,
+      })
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error updating review:', error);
+      return;
+    }
+
+    await get().fetchReviews();
+  },
+
+  // Delete review
+  deleteReview: async (id) => {
+    if (!supabase) return;
+
+    const { error } = await supabase
+      .from('reviews')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error deleting review:', error);
+      return;
+    }
+
+    await get().fetchReviews();
   },
 }));
