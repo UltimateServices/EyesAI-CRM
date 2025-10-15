@@ -109,9 +109,29 @@ export default function CompanyDetailPage() {
       <Card className="p-6">
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-4">
-            <div className="w-16 h-16 rounded-lg overflow-hidden bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-2xl font-bold flex-shrink-0">
-              {company.name.charAt(0)}
-            </div>
+            {/* LOGO - FIXED TO SHOW UPLOADED IMAGE */}
+            {company.logoUrl ? (
+              <div className="w-16 h-16 rounded-lg overflow-hidden border-2 border-slate-200 bg-white flex items-center justify-center flex-shrink-0">
+                <img 
+                  src={company.logoUrl} 
+                  alt={`${company.name} logo`}
+                  className="w-full h-full object-contain p-1"
+                  onError={(e) => {
+                    // Fallback to letter if image fails to load
+                    e.currentTarget.style.display = 'none';
+                    const parent = e.currentTarget.parentElement;
+                    if (parent) {
+                      parent.className = 'w-16 h-16 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-2xl font-bold flex-shrink-0';
+                      parent.textContent = company.name.charAt(0).toUpperCase();
+                    }
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="w-16 h-16 rounded-lg overflow-hidden bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-2xl font-bold flex-shrink-0">
+                {company.name.charAt(0).toUpperCase()}
+              </div>
+            )}
 
             <div className="flex-1">
               <h1 className="text-2xl font-bold text-slate-900 mb-2">

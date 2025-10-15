@@ -18,6 +18,7 @@ interface Company {
   googleMapsUrl?: string;
   yelpUrl?: string;
   facebookUrl?: string;
+  logoUrl?: string;  // ADDED
   createdAt?: string;
   updatedAt?: string;
 }
@@ -198,6 +199,7 @@ export const useStore = create<StoreState>((set, get) => ({
         googleMapsUrl: row.google_maps_url,
         yelpUrl: row.yelp_url,
         facebookUrl: row.facebook_url,
+        logoUrl: row.logo_url,  // ADDED
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       }));
@@ -230,6 +232,7 @@ export const useStore = create<StoreState>((set, get) => ({
           google_maps_url: company.googleMapsUrl,
           yelp_url: company.yelpUrl,
           facebook_url: company.facebookUrl,
+          logo_url: company.logoUrl,  // ADDED
         }]);
 
       if (error) throw error;
@@ -241,30 +244,36 @@ export const useStore = create<StoreState>((set, get) => ({
 
   updateCompany: async (id, updates) => {
     try {
+      const updateData: any = {
+        updated_at: new Date().toISOString(),
+      };
+
+      // Only include fields that are provided
+      if (updates.name !== undefined) updateData.name = updates.name;
+      if (updates.website !== undefined) updateData.website = updates.website;
+      if (updates.phone !== undefined) updateData.phone = updates.phone;
+      if (updates.email !== undefined) updateData.email = updates.email;
+      if (updates.address !== undefined) updateData.address = updates.address;
+      if (updates.city !== undefined) updateData.city = updates.city;
+      if (updates.state !== undefined) updateData.state = updates.state;
+      if (updates.zip !== undefined) updateData.zip = updates.zip;
+      if (updates.status !== undefined) updateData.status = updates.status;
+      if (updates.plan !== undefined) updateData.plan = updates.plan;
+      if (updates.googleMapsUrl !== undefined) updateData.google_maps_url = updates.googleMapsUrl;
+      if (updates.yelpUrl !== undefined) updateData.yelp_url = updates.yelpUrl;
+      if (updates.facebookUrl !== undefined) updateData.facebook_url = updates.facebookUrl;
+      if (updates.logoUrl !== undefined) updateData.logo_url = updates.logoUrl;  // ADDED
+
       const { error } = await supabase
         .from('companies')
-        .update({
-          name: updates.name,
-          website: updates.website,
-          phone: updates.phone,
-          email: updates.email,
-          address: updates.address,
-          city: updates.city,
-          state: updates.state,
-          zip: updates.zip,
-          status: updates.status,
-          plan: updates.plan,
-          google_maps_url: updates.googleMapsUrl,
-          yelp_url: updates.yelpUrl,
-          facebook_url: updates.facebookUrl,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq('id', id);
 
       if (error) throw error;
       await get().fetchCompanies();
     } catch (error) {
       console.error('Error updating company:', error);
+      throw error;
     }
   },
 
