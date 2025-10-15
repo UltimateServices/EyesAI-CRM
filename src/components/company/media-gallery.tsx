@@ -7,7 +7,9 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Image as ImageIcon, Upload, X, Video, Loader2, Trash2 } from 'lucide-react';
-import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+
+const supabase = createClientComponentClient();
 
 interface MediaGalleryProps {
   company: Company;
@@ -20,10 +22,10 @@ export default function MediaGallery({ company }: MediaGalleryProps) {
 
   const intake = getIntakeByCompanyId(company.id);
 
-  const [logoPreview, setLogoPreview] = useState(company.logoUrl || '');
+  const [logoPreview, setLogoPreview] = useState('');
   const [logoUploading, setLogoUploading] = useState(false);
 
-  const [photos, setPhotos] = useState<string[]>(intake?.galleryImages || []);
+  const [photos, setPhotos] = useState<string[]>([]);
   const [photosUploading, setPhotosUploading] = useState(false);
   const [isDraggingPhotos, setIsDraggingPhotos] = useState(false);
 
@@ -32,54 +34,79 @@ export default function MediaGallery({ company }: MediaGalleryProps) {
   const [isDraggingVideos, setIsDraggingVideos] = useState(false);
 
   useEffect(() => {
+    // Load logo from company
     if (company.logoUrl) {
       setLogoPreview(company.logoUrl);
     }
-  }, [company.logoUrl]);
+    
+    // Load photos from intake
+    if (intake?.galleryLinks) {
+      setPhotos(intake.galleryLinks);
+    }
+    
+    // Load videos from intake
+    if (intake?.embeddedVideos) {
+      setVideos(intake.embeddedVideos);
+    }
+  }, [company, intake]);
 
   const uploadToSupabase = async (file: File, folder: string): Promise<string | null> => {
-    if (!supabase || !isSupabaseConfigured()) {
-      console.error('Supabase not configured');
-      alert('Storage not configured. Please contact administrator.');
-      return null;
-    }
+    try {
+      const fileName = `${folder}/${company.id}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('company-media')
+        .upload(fileName, file);
 
-    const fileName = `${folder}/${company.id}/${Date.now()}_${file.name}`;
-    
-    const { error } = await supabase.storage
-      .from('company-media')
-      .upload(fileName, file);
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        alert('Upload failed: ' + uploadError.message);
+        return null;
+      }
 
-    if (error) {
-      console.error('Upload error:', error);
+      const { data } = supabase.storage
+        .from('company-media')
+        .getPublicUrl(fileName);
+
+      return data.publicUrl;
+    } catch (error: any) {
+      console.error('Upload exception:', error);
       alert('Upload failed: ' + error.message);
       return null;
     }
-
-    const { data } = supabase.storage
-      .from('company-media')
-      .getPublicUrl(fileName);
-
-    return data.publicUrl;
   };
 
   const handleLogoFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !file.type.startsWith('image/')) return;
+    if (!file || !file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
 
     setLogoUploading(true);
     const url = await uploadToSupabase(file, 'logos');
     if (url) {
       setLogoPreview(url);
-      console.log('Logo uploaded, URL:', url);
+      console.log('✅ Logo uploaded:', url);
     }
     setLogoUploading(false);
   };
 
-  const handleLogoSave = () => {
-    updateCompany(company.id, { ...company, logoUrl: logoPreview });
-    alert('✅ Logo saved! Refresh to see it in the header.');
-    window.location.reload();
+  const handleLogoSave = async () => {
+    if (!logoPreview) {
+      alert('No logo to save');
+      return;
+    }
+
+    try {
+      // Update company with ONLY the logoUrl field
+      await updateCompany(company.id, { logoUrl: logoPreview });
+      alert('✅ Logo saved successfully!');
+      window.location.reload();
+    } catch (error: any) {
+      console.error('Save logo error:', error);
+      alert('❌ Failed to save logo: ' + error.message);
+    }
   };
 
   const handlePhotosDrop = async (e: React.DragEvent) => {
@@ -125,15 +152,24 @@ export default function MediaGallery({ company }: MediaGalleryProps) {
     setPhotos(prev => prev.filter((_, i) => i !== index));
   };
 
-  const savePhotosToIntake = () => {
+  const savePhotosToIntake = async () => {
     if (!intake) {
       alert('Please complete intake first');
       return;
     }
     
-    const updatedIntake = { ...intake, galleryImages: photos };
-    saveIntake(updatedIntake);
-    alert(`✅ Saved ${photos.length} gallery images!`);
+    try {
+      // Save to intake with correct field name
+      await saveIntake({
+        ...intake,
+        galleryLinks: photos,
+        updatedAt: new Date().toISOString(),
+      });
+      alert(`✅ Saved ${photos.length} gallery images!`);
+    } catch (error: any) {
+      console.error('Save photos error:', error);
+      alert('❌ Failed to save photos: ' + error.message);
+    }
   };
 
   const handleVideosDrop = async (e: React.DragEvent) => {
@@ -179,16 +215,27 @@ export default function MediaGallery({ company }: MediaGalleryProps) {
     setVideos(prev => prev.filter((_, i) => i !== index));
   };
 
+  const saveVideosToIntake = async () => {
+    if (!intake) {
+      alert('Please complete intake first');
+      return;
+    }
+    
+    try {
+      await saveIntake({
+        ...intake,
+        embeddedVideos: videos,
+        updatedAt: new Date().toISOString(),
+      });
+      alert(`✅ Saved ${videos.length} videos!`);
+    } catch (error: any) {
+      console.error('Save videos error:', error);
+      alert('❌ Failed to save videos: ' + error.message);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      {!isSupabaseConfigured() && (
-        <Card className="p-4 bg-yellow-50 border-yellow-200">
-          <p className="text-sm text-yellow-800">
-            ⚠️ Storage not configured. Media uploads are disabled.
-          </p>
-        </Card>
-      )}
-
       {/* Logo Section */}
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-4">
@@ -203,8 +250,8 @@ export default function MediaGallery({ company }: MediaGalleryProps) {
               type="file"
               accept="image/*"
               onChange={handleLogoFileSelect}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg"
-              disabled={logoUploading || !isSupabaseConfigured()}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+              disabled={logoUploading}
             />
           </div>
 
@@ -221,14 +268,8 @@ export default function MediaGallery({ company }: MediaGalleryProps) {
               <div className="mb-3">
                 <img 
                   src={logoPreview} 
-                  alt="Logo" 
-                  className="w-32 h-32 object-cover rounded-lg border-2 border-slate-200"
-                  onError={(e) => {
-                    console.error('Failed to load logo preview:', logoPreview);
-                  }}
-                  onLoad={() => {
-                    console.log('Logo preview loaded successfully');
-                  }}
+                  alt="Logo Preview" 
+                  className="w-32 h-32 object-contain rounded-lg border-2 border-slate-200 p-2 bg-white"
                 />
               </div>
               <Button onClick={handleLogoSave} className="w-full">
@@ -281,9 +322,8 @@ export default function MediaGallery({ company }: MediaGalleryProps) {
                 onChange={handlePhotosSelect} 
                 className="hidden" 
                 id="photo-upload"
-                disabled={!isSupabaseConfigured()}
               />
-              <Button asChild variant="outline" size="sm" disabled={!isSupabaseConfigured()}>
+              <Button asChild variant="outline" size="sm">
                 <label htmlFor="photo-upload" className="cursor-pointer">Browse Files</label>
               </Button>
             </>
@@ -294,8 +334,15 @@ export default function MediaGallery({ company }: MediaGalleryProps) {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
             {photos.map((photo, index) => (
               <div key={index} className="relative group">
-                <img src={photo} alt={`Gallery ${index + 1}`} className="w-full h-32 object-cover rounded-lg" />
-                <button onClick={() => removePhoto(index)} className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                <img 
+                  src={photo} 
+                  alt={`Gallery ${index + 1}`} 
+                  className="w-full h-32 object-cover rounded-lg border border-slate-200"
+                />
+                <button 
+                  onClick={() => removePhoto(index)} 
+                  className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                >
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -306,10 +353,18 @@ export default function MediaGallery({ company }: MediaGalleryProps) {
 
       {/* Videos */}
       <Card className="p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Video className="w-5 h-5 text-green-600" />
-          <h3 className="text-lg font-semibold text-slate-900">Videos</h3>
-          {videos.length > 0 && <Badge variant="secondary">{videos.length} videos</Badge>}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Video className="w-5 h-5 text-green-600" />
+            <h3 className="text-lg font-semibold text-slate-900">Videos</h3>
+            {videos.length > 0 && <Badge variant="secondary">{videos.length} videos</Badge>}
+          </div>
+          {videos.length > 0 && (
+            <Button onClick={saveVideosToIntake} variant="outline" size="sm" disabled={videosUploading}>
+              <Upload className="w-4 h-4 mr-2" />
+              Save Videos
+            </Button>
+          )}
         </div>
 
         <div
@@ -337,9 +392,8 @@ export default function MediaGallery({ company }: MediaGalleryProps) {
                 onChange={handleVideosSelect} 
                 className="hidden" 
                 id="video-upload"
-                disabled={!isSupabaseConfigured()}
               />
-              <Button asChild variant="outline" size="sm" disabled={!isSupabaseConfigured()}>
+              <Button asChild variant="outline" size="sm">
                 <label htmlFor="video-upload" className="cursor-pointer">Browse Files</label>
               </Button>
             </>
@@ -347,15 +401,19 @@ export default function MediaGallery({ company }: MediaGalleryProps) {
         </div>
 
         {videos.length > 0 && (
-          <div className="space-y-3 mt-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
             {videos.map((video, index) => (
-              <div key={index} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <Video className="w-5 h-5 text-green-600" />
-                  <span className="text-sm font-medium">Video {index + 1}</span>
-                </div>
-                <button onClick={() => removeVideo(index)} className="p-1 text-red-500 hover:bg-red-50 rounded">
-                  <Trash2 className="w-4 h-4" />
+              <div key={index} className="relative group">
+                <video 
+                  src={video} 
+                  controls 
+                  className="w-full rounded-lg border border-slate-200"
+                />
+                <button 
+                  onClick={() => removeVideo(index)} 
+                  className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X className="w-4 h-4" />
                 </button>
               </div>
             ))}
