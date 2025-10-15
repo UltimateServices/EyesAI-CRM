@@ -275,7 +275,7 @@ export const useStore = create<StoreState>((set, get) => ({
       .from('reviews')
       .insert([{
         company_id: review.companyId,
-        platform: review.platform,
+        platform: review.platform.toLowerCase(),
         rating: review.rating,
         author: review.reviewerName,
         text: review.reviewText,
@@ -298,7 +298,7 @@ export const useStore = create<StoreState>((set, get) => ({
     const { error } = await supabase
       .from('reviews')
       .update({
-        platform: updates.platform,
+        platform: updates.platform?.toLowerCase(),
         rating: updates.rating,
         author: updates.reviewerName,
         text: updates.reviewText,
