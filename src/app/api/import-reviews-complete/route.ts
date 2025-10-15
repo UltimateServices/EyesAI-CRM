@@ -31,7 +31,20 @@ export async function POST(request: NextRequest) {
 
             // Try to get place ID from URL first
             if (existingUrls?.google) {
-              placeId = extractPlaceIdFromUrl(existingUrls.google);
+              // Check if it's a share.google link and expand it
+              let googleUrl = existingUrls.google;
+              
+              if (googleUrl.includes('share.google') || googleUrl.includes('goo.gl') || googleUrl.includes('maps.app.goo.gl')) {
+                sendLog('🔗 Expanding shortened Google link...');
+                const expandedUrl = await expandShortenedUrl(googleUrl);
+                if (expandedUrl) {
+                  googleUrl = expandedUrl;
+                  foundUrls.google = expandedUrl; // Update with full URL
+                  sendLog(`✅ Expanded to: ${expandedUrl.substring(0, 80)}...`);
+                }
+              }
+              
+              placeId = extractPlaceIdFromUrl(googleUrl);
               if (placeId) sendLog('✅ Extracted Place ID from URL');
             }
 
@@ -225,6 +238,22 @@ export async function POST(request: NextRequest) {
       'Connection': 'keep-alive',
     },
   });
+}
+
+async function expandShortenedUrl(shortUrl: string): Promise<string | null> {
+  try {
+    // Use HEAD request to follow redirects without downloading content
+    const response = await fetch(shortUrl, {
+      method: 'HEAD',
+      redirect: 'follow',
+    });
+    
+    // Return the final URL after all redirects
+    return response.url || null;
+  } catch (error) {
+    console.error('Error expanding URL:', error);
+    return null;
+  }
 }
 
 async function searchGooglePlaces(query: string): Promise<string | null> {
