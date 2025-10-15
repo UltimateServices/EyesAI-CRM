@@ -359,11 +359,11 @@ export function Reviews({ company }: ReviewsProps) {
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold text-lg">
-                    {review.reviewerName.charAt(0).toUpperCase()}
+                    {(review.reviewerName || 'Unknown').charAt(0).toUpperCase()}
                   </div>
                   <div>
                     <div className="flex items-center gap-2 mb-1">
-                      <h4 className="font-semibold text-slate-900">{review.reviewerName}</h4>
+                      <h4 className="font-semibold text-slate-900">{review.reviewerName || 'Unknown'}</h4>
                       <Badge variant="secondary" className="text-xs">{review.platform}</Badge>
                     </div>
                     <div className="flex items-center gap-2">
