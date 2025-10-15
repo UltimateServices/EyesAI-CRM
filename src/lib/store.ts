@@ -1,230 +1,228 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import { Company, Task, Intake, VerificationLogEntry } from './types';
+import { Company, Intake } from './types';
+import { supabase } from './supabase';
 
-interface AppState {
+interface StoreState {
   companies: Company[];
-  tasks: Task[];
   intakes: Intake[];
   
-  addCompany: (company: Company) => void;
-  updateCompany: (id: string, updates: Partial<Company>) => void;
-  deleteCompany: (id: string) => void;
+  // Company methods
+  fetchCompanies: () => Promise<void>;
+  addCompany: (company: Omit<Company, 'id' | 'createdAt' | 'lastUpdated'>) => Promise<void>;
+  updateCompany: (id: string, updates: Partial<Company>) => Promise<void>;
+  deleteCompany: (id: string) => Promise<void>;
   
-  addTask: (task: Task) => void;
-  updateTask: (id: string, updates: Partial<Task>) => void;
-  deleteTask: (id: string) => void;
-  
-  saveIntake: (intake: Intake) => void;
+  // Intake methods
+  fetchIntakes: () => Promise<void>;
   getIntakeByCompanyId: (companyId: string) => Intake | undefined;
-  updateCompanyFromIntake: (companyId: string, intake: Intake) => void;
-  
-  addVerificationLog: (companyId: string, entry: VerificationLogEntry) => void;
-  updateLastVerified: (companyId: string, timestamp: string) => void;
+  saveIntake: (intake: Intake) => Promise<void>;
+  updateCompanyFromIntake: (companyId: string, intake: Intake) => Promise<void>;
 }
 
-const mockCompanies: Company[] = [
-  {
-    id: 'c1',
-    name: 'Ultimate Dumpsters',
-    website: 'https://ultimatedumpsters.com',
-    logoUrl: '',
-    contactEmail: 'CS@UltimateDumpsters.com',
-    phone: '(866) 858-3867',
-    address: '3391 Long Beach Road, Oceanside NY 11572',
-    status: 'ACTIVE',
-    plan: 'VERIFIED',
-    assignedVaName: 'John VA',
-    createdAt: new Date('2025-09-15').toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'c2',
-    name: 'Major Dumpsters Inc.',
-    website: 'https://majordumpsters.com',
-    logoUrl: '',
-    contactEmail: 'Contact@majordumpsters.com',
-    phone: '(516) 696-3867',
-    address: '3670 W Oceanside Road, Oceanside, New York',
-    status: 'ACTIVE',
-    plan: 'DISCOVER',
-    assignedVaName: 'John VA',
-    createdAt: new Date('2025-10-01').toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'c3',
-    name: 'Green Waste Solutions',
-    website: 'https://greenwaste.example.com',
-    contactEmail: 'hello@greenwaste.example.com',
-    phone: '(555) 123-4567',
-    address: '123 Eco Street, Portland OR 97201',
-    status: 'NEW',
-    plan: 'DISCOVER',
-    assignedVaName: 'Sarah VA',
-    createdAt: new Date('2025-10-12').toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-];
+export const useStore = create<StoreState>((set, get) => ({
+  companies: [],
+  intakes: [],
 
-const mockTasks: Task[] = [
-  {
-    id: 't1',
-    companyId: 'c1',
-    title: 'Complete Company Intake',
-    description: 'Gather all business information from website',
-    status: 'done',
-    priority: 'high',
-    assignedTo: 'John VA',
-    dueAt: new Date('2025-10-05').toISOString(),
-    createdAt: new Date('2025-10-01').toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 't2',
-    companyId: 'c2',
-    title: 'Verify Business Licenses',
-    description: 'Check state licensing database',
-    status: 'in_progress',
-    priority: 'medium',
-    assignedTo: 'John VA',
-    dueAt: new Date('2025-10-15').toISOString(),
-    createdAt: new Date('2025-10-10').toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 't3',
-    companyId: 'c3',
-    title: 'Initial Contact',
-    description: 'Schedule onboarding call',
-    status: 'todo',
-    priority: 'high',
-    assignedTo: 'Sarah VA',
-    dueAt: new Date('2025-10-14').toISOString(),
-    createdAt: new Date('2025-10-12').toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-];
+  // Fetch all companies from Supabase
+  fetchCompanies: async () => {
+    if (!supabase) return;
+    
+    const { data, error } = await supabase
+      .from('companies')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-export const useStore = create<AppState>()(
-  persist(
-    (set, get) => ({
-      companies: mockCompanies,
-      tasks: mockTasks,
-      intakes: [],
-
-      addCompany: (company) =>
-        set((state) => ({
-          companies: [...state.companies, company],
-        })),
-
-      updateCompany: (id, updates) =>
-        set((state) => ({
-          companies: state.companies.map((c) =>
-            c.id === id ? { ...c, ...updates, updatedAt: new Date().toISOString() } : c
-          ),
-        })),
-
-      deleteCompany: (id) =>
-        set((state) => ({
-          companies: state.companies.filter((c) => c.id !== id),
-        })),
-
-      addTask: (task) =>
-        set((state) => ({
-          tasks: [...state.tasks, task],
-        })),
-
-      updateTask: (id, updates) =>
-        set((state) => ({
-          tasks: state.tasks.map((t) =>
-            t.id === id ? { ...t, ...updates, updatedAt: new Date().toISOString() } : t
-          ),
-        })),
-
-      deleteTask: (id) =>
-        set((state) => ({
-          tasks: state.tasks.filter((t) => t.id !== id),
-        })),
-
-      saveIntake: (intake) =>
-        set((state) => {
-          console.log('saveIntake called with:', intake);
-          const existingIndex = state.intakes.findIndex((i) => i.id === intake.id);
-          if (existingIndex >= 0) {
-            const updated = [...state.intakes];
-            updated[existingIndex] = { ...intake, updatedAt: new Date().toISOString() };
-            console.log('Updated existing intake, new intakes array:', updated);
-            return { intakes: updated };
-          }
-          const newIntakes = [...state.intakes, intake];
-          console.log('Added new intake, new intakes array:', newIntakes);
-          return { intakes: newIntakes };
-        }),
-
-      getIntakeByCompanyId: (companyId) => {
-        return get().intakes.find((i) => i.companyId === companyId);
-      },
-
-      updateCompanyFromIntake: (companyId, intake) =>
-        set((state) => ({
-          companies: state.companies.map((c) =>
-            c.id === companyId
-              ? {
-                  ...c,
-                  name: intake.officialName || c.name,
-                  contactEmail: intake.emails?.[0] || c.contactEmail,
-                  phone: intake.mainPhone || c.phone,
-                  address: intake.physicalAddress || c.address,
-                  logoUrl: intake.logoUrl || c.logoUrl,
-                  status: 'ACTIVE',
-                  updatedAt: new Date().toISOString(),
-                }
-              : c
-          ),
-        })),
-
-      addVerificationLog: (companyId, entry) =>
-        set((state) => ({
-          intakes: state.intakes.map((intake) =>
-            intake.companyId === companyId
-              ? {
-                  ...intake,
-                  verificationLog: [...(intake.verificationLog || []), entry],
-                  updatedAt: new Date().toISOString(),
-                }
-              : intake
-          ),
-        })),
-
-      updateLastVerified: (companyId, timestamp) =>
-        set((state) => ({
-          intakes: state.intakes.map((intake) =>
-            intake.companyId === companyId
-              ? {
-                  ...intake,
-                  lastVerified: timestamp,
-                  updatedAt: new Date().toISOString(),
-                }
-              : intake
-          ),
-        })),
-    }),
-    {
-      name: 'eyesai-crm-storage',
-      storage: createJSONStorage(() => localStorage),
-      skipHydration: false,
-      partialize: (state) => ({
-        companies: state.companies,
-        tasks: state.tasks,
-        intakes: state.intakes,
-      }),
+    if (error) {
+      console.error('Error fetching companies:', error);
+      return;
     }
-  )
-);
 
-// Force rehydration on client side
-if (typeof window !== 'undefined') {
-  useStore.persist.rehydrate();
-  console.log('Zustand store rehydrated on client');
-}
+    // Map database fields to frontend format
+    const companies: Company[] = (data || []).map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      website: row.website || '',
+      logoUrl: row.logo_url || '',
+      contactEmail: row.contact_email || '',
+      phone: row.phone || '',
+      address: row.address || '',
+      status: row.status,
+      plan: row.plan,
+      assignedVaName: row.assigned_va_name || '',
+      createdAt: row.created_at,
+      lastUpdated: row.updated_at,
+    }));
+
+    set({ companies });
+  },
+
+  // Add new company
+  addCompany: async (company) => {
+    if (!supabase) return;
+
+    const { data, error } = await supabase
+      .from('companies')
+      .insert([{
+        name: company.name,
+        website: company.website,
+        logo_url: company.logoUrl,
+        contact_email: company.contactEmail,
+        phone: company.phone,
+        address: company.address,
+        status: company.status,
+        plan: company.plan,
+        assigned_va_name: company.assignedVaName,
+      }])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error adding company:', error);
+      return;
+    }
+
+    // Refresh companies
+    await get().fetchCompanies();
+  },
+
+  // Update company
+  updateCompany: async (id, updates) => {
+    if (!supabase) return;
+
+    const { error } = await supabase
+      .from('companies')
+      .update({
+        name: updates.name,
+        website: updates.website,
+        logo_url: updates.logoUrl,
+        contact_email: updates.contactEmail,
+        phone: updates.phone,
+        address: updates.address,
+        status: updates.status,
+        plan: updates.plan,
+        assigned_va_name: updates.assignedVaName,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error updating company:', error);
+      return;
+    }
+
+    // Refresh companies
+    await get().fetchCompanies();
+  },
+
+  // Delete company
+  deleteCompany: async (id) => {
+    if (!supabase) return;
+
+    const { error } = await supabase
+      .from('companies')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error deleting company:', error);
+      return;
+    }
+
+    // Refresh companies
+    await get().fetchCompanies();
+  },
+
+  // Fetch all intakes
+  fetchIntakes: async () => {
+    if (!supabase) return;
+
+    const { data, error } = await supabase
+      .from('intakes')
+      .select('*');
+
+    if (error) {
+      console.error('Error fetching intakes:', error);
+      return;
+    }
+
+    // Map database to frontend format
+    const intakes: Intake[] = (data || []).map((row: any) => ({
+      id: row.id,
+      companyId: row.company_id,
+      status: row.status,
+      ...(row.data || {}), // Spread all intake fields from JSON
+      galleryImages: row.gallery_images || [],
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      completedAt: row.completed_at,
+    }));
+
+    set({ intakes });
+  },
+
+  // Get intake by company ID
+  getIntakeByCompanyId: (companyId) => {
+    return get().intakes.find((i) => i.companyId === companyId);
+  },
+
+  // Save intake
+  saveIntake: async (intake) => {
+    if (!supabase) return;
+
+    // Check if intake exists
+    const { data: existing } = await supabase
+      .from('intakes')
+      .select('id')
+      .eq('company_id', intake.companyId)
+      .single();
+
+    const intakeData = {
+      company_id: intake.companyId,
+      status: intake.status,
+      official_name: intake.officialName,
+      website: intake.website,
+      main_phone: intake.mainPhone,
+      physical_address: intake.physicalAddress,
+      gallery_images: intake.galleryImages || [],
+      data: intake, // Store entire intake as JSON
+      updated_at: new Date().toISOString(),
+      completed_at: intake.completedAt || null,
+    };
+
+    if (existing) {
+      // Update existing
+      const { error } = await supabase
+        .from('intakes')
+        .update(intakeData)
+        .eq('company_id', intake.companyId);
+
+      if (error) {
+        console.error('Error updating intake:', error);
+        return;
+      }
+    } else {
+      // Insert new
+      const { error } = await supabase
+        .from('intakes')
+        .insert([intakeData]);
+
+      if (error) {
+        console.error('Error inserting intake:', error);
+        return;
+      }
+    }
+
+    // Refresh intakes
+    await get().fetchIntakes();
+  },
+
+  // Update company from intake data
+  updateCompanyFromIntake: async (companyId, intake) => {
+    await get().updateCompany(companyId, {
+      status: 'ACTIVE',
+      website: intake.website || '',
+      phone: intake.mainPhone || '',
+      address: intake.physicalAddress || '',
+    });
+  },
+}));
