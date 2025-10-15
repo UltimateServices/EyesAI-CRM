@@ -55,43 +55,22 @@ export async function POST(request: NextRequest) {
 
         if (APIFY_API_TOKEN) {
           try {
-            let googleUrl = existingUrls?.google;
-
-            // Find Google Maps URL if not provided
-            if (!googleUrl) {
-              sendLog('🔍 Finding Google Maps listing...');
-              const searchQuery = companyDetails?.address
-                ? `${companyName} ${companyDetails.address} Google Maps`
-                : `${companyName} Google Maps`;
-
-              const searchResponse = await fetch('https://google.serper.dev/search', {
-                method: 'POST',
-                headers: {
-                  'X-API-KEY': SERPER_API_KEY,
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ q: searchQuery, num: 5 }),
-              });
-
-              const searchData = await searchResponse.json();
-
-              if (searchData.organic) {
-                for (const result of searchData.organic) {
-                  if (result.link && (result.link.includes('google.com/maps') || result.link.includes('maps.google.com'))) {
-                    googleUrl = result.link;
-                    foundUrls.google = googleUrl;
-                    sendLog(`✅ Found: ${googleUrl.substring(0, 60)}...`);
-                    break;
-                  }
-                }
-              }
-            }
+            // STEP 1: Find Google Maps URL using comprehensive search
+            const googleUrl = await findGoogleMapsUrl(
+              companyName,
+              companyDetails,
+              existingUrls?.google,
+              sendLog
+            );
 
             if (googleUrl) {
+              foundUrls.google = googleUrl;
+              
+              sendLog('');
               sendLog(`🔑 Launching Apify scraper (${REVIEW_LIMITS.google} newest reviews)...`);
 
+              // STEP 2: Use Apify to scrape reviews from the URL
               const googleReviews = await scrapeGoogleWithApify(
-                companyName,
                 googleUrl,
                 REVIEW_LIMITS.google,
                 sendLog
@@ -101,10 +80,10 @@ export async function POST(request: NextRequest) {
                 allReviews.push(...googleReviews);
                 sendLog(`✅ ${googleReviews.length} Google reviews scraped`);
               } else {
-                sendLog('⚠️ No Google reviews found');
+                sendLog('⚠️ Apify found 0 reviews');
               }
             } else {
-              sendLog('⚠️ Could not find Google Maps listing');
+              sendLog('⚠️ Could not find Google Maps listing after all search methods');
             }
           } catch (error: any) {
             sendLog(`❌ Google error: ${error.message}`);
@@ -221,27 +200,153 @@ export async function POST(request: NextRequest) {
 }
 
 // ========================================
+// COMPREHENSIVE GOOGLE MAPS URL FINDER
+// ========================================
+async function findGoogleMapsUrl(
+  companyName: string,
+  companyDetails: any,
+  existingUrl: string | null,
+  sendLog: (msg: string) => void
+): Promise<string | null> {
+  
+  // Method 0: Use existing URL if valid
+  if (existingUrl && (existingUrl.includes('google.com/maps') || existingUrl.includes('maps.google.com'))) {
+    sendLog(`✅ Using existing URL from intake`);
+    sendLog(`   ${existingUrl.substring(0, 70)}...`);
+    return existingUrl;
+  }
+
+  sendLog('🔍 No Google URL in intake - running comprehensive search...');
+  sendLog('');
+
+  const searchMethods = [];
+
+  // Method 1: Business Name + Full Address (BEST)
+  if (companyDetails?.address) {
+    searchMethods.push({
+      name: 'Name + Address',
+      query: `"${companyName}" ${companyDetails.address} site:google.com/maps`,
+    });
+  }
+
+  // Method 2: Phone Number (VERY ACCURATE)
+  if (companyDetails?.phone) {
+    const cleanPhone = companyDetails.phone.replace(/[\s\-\(\)]/g, '');
+    searchMethods.push({
+      name: 'Phone Number',
+      query: `${cleanPhone} site:google.com/maps`,
+    });
+  }
+
+  // Method 3: Business Name + Phone
+  if (companyDetails?.phone) {
+    searchMethods.push({
+      name: 'Name + Phone',
+      query: `"${companyName}" ${companyDetails.phone} site:google.com/maps`,
+    });
+  }
+
+  // Method 4: Business Name + City/State
+  if (companyDetails?.address) {
+    const cityState = extractCityState(companyDetails.address);
+    if (cityState) {
+      searchMethods.push({
+        name: 'Name + City/State',
+        query: `"${companyName}" ${cityState} site:google.com/maps`,
+      });
+    }
+  }
+
+  // Method 5: Website Domain
+  if (companyDetails?.website) {
+    const domain = extractDomain(companyDetails.website);
+    if (domain) {
+      searchMethods.push({
+        name: 'Website Domain',
+        query: `${domain} site:google.com/maps`,
+      });
+    }
+  }
+
+  // Method 6: Business Name Only (LAST RESORT)
+  searchMethods.push({
+    name: 'Name Only',
+    query: `"${companyName}" site:google.com/maps`,
+  });
+
+  // Try each method until we find a valid Google Maps URL
+  for (let i = 0; i < searchMethods.length; i++) {
+    const method = searchMethods[i];
+    sendLog(`🔍 Method ${i + 1}: ${method.name}`);
+    sendLog(`   Query: "${method.query}"`);
+
+    try {
+      const searchResponse = await fetch('https://google.serper.dev/search', {
+        method: 'POST',
+        headers: {
+          'X-API-KEY': SERPER_API_KEY!,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          q: method.query,
+          num: 5,
+        }),
+      });
+
+      const searchData = await searchResponse.json();
+
+      if (searchData.organic) {
+        for (const result of searchData.organic) {
+          if (result.link && 
+              (result.link.includes('google.com/maps/place') || 
+               result.link.includes('maps.google.com'))) {
+            
+            sendLog(`   ✅ FOUND via ${method.name}!`);
+            sendLog(`   ${result.link.substring(0, 70)}...`);
+            sendLog('');
+            return result.link;
+          }
+        }
+      }
+
+      sendLog(`   ✗ No results`);
+      sendLog('');
+    } catch (error) {
+      sendLog(`   ✗ Search failed: ${error}`);
+      sendLog('');
+    }
+
+    // Small delay between attempts
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+
+  sendLog('❌ Could not find Google Maps URL after all methods');
+  return null;
+}
+
+// ========================================
 // APIFY GOOGLE MAPS SCRAPER
 // ========================================
 async function scrapeGoogleWithApify(
-  businessName: string,
   url: string,
   limit: number,
   sendLog: (msg: string) => void
 ): Promise<Review[]> {
   try {
-    // Start Apify actor
+    sendLog(`   🔗 Scraping: ${url.substring(0, 70)}...`);
+
+    // Start Apify actor with direct URL
     const actorRunResponse = await fetch(
       `https://api.apify.com/v2/acts/compass~crawler-google-places/runs?token=${APIFY_API_TOKEN}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          searchStringsArray: [businessName],
+          startUrls: [{ url: url }],  // Always use URL, never search
           maxCrawledPlaces: 1,
           language: 'en',
           maxReviews: limit,
-          reviewsSort: 'newest',  // Get newest reviews first
+          reviewsSort: 'newest',
           scrapeReviewerName: true,
           scrapeReviewId: true,
           scrapeReviewUrl: true,
@@ -403,6 +508,15 @@ function extractCityState(address: string): string {
     return parts.slice(-2).join(', ');
   }
   return '';
+}
+
+function extractDomain(website: string): string | null {
+  try {
+    const url = new URL(website.startsWith('http') ? website : `https://${website}`);
+    return url.hostname.replace('www.', '');
+  } catch (e) {
+    return null;
+  }
 }
 
 function capitalize(str: string): string {
