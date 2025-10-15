@@ -260,10 +260,10 @@ async function scrapeGoogleWithApify(
       sendLog(`   📍 Query: "${searchInput.searchStringsArray[0]}"`);
     }
 
-    // Build comprehensive input with ALL available data
+    // Build comprehensive input
     const apifyInput: any = {
       ...searchInput,
-      maxCrawledPlaces: 1,
+      maxCrawledPlaces: 3, // Get multiple results for verification
       language: 'en',
       maxReviews: limit,
       reviewsSort: 'newest',
@@ -274,23 +274,13 @@ async function scrapeGoogleWithApify(
       scrapeResponseFromOwnerText: true,
     };
 
-    // Add additional search filters if searching (not using direct URL)
-    if (searchInput.searchStringsArray) {
-      // Add location for better search accuracy
-      if (companyDetails?.address) {
-        const cityState = extractCityState(companyDetails.address);
-        if (cityState) {
-          apifyInput.location = cityState;
-          sendLog(`   🌍 Location filter: ${cityState}`);
-        }
+    // Add location filter for better accuracy
+    if (searchInput.searchStringsArray && companyDetails?.address) {
+      const cityState = extractCityState(companyDetails.address);
+      if (cityState) {
+        apifyInput.location = cityState;
+        sendLog(`   🌍 Location filter: ${cityState}`);
       }
-      
-      // Log all data we're providing to Apify
-      sendLog(`   📋 Search context:`);
-      sendLog(`      • Business: ${companyName}`);
-      if (companyDetails?.address) sendLog(`      • Address: ${companyDetails.address}`);
-      if (companyDetails?.phone) sendLog(`      • Phone: ${companyDetails.phone}`);
-      if (companyDetails?.website) sendLog(`      • Website: ${companyDetails.website}`);
     }
 
     sendLog('   ⏳ Starting Apify actor...');
@@ -358,37 +348,69 @@ async function scrapeGoogleWithApify(
 
     sendLog(`   📦 Received ${results.length} business result(s)`);
 
+    // ========================================
+    // BUSINESS VERIFICATION - Find correct match
+    // ========================================
+    let matchedBusiness: any = null;
+    
+    if (results.length === 1) {
+      // Only one result, use it
+      matchedBusiness = results[0];
+      sendLog(`   ✅ Single result - using: "${matchedBusiness.title}"`);
+    } else {
+      // Multiple results - verify which is correct
+      sendLog(`   🔍 Verifying correct business from ${results.length} results...`);
+      
+      for (const item of results) {
+        const score = calculateBusinessMatchScore(item, companyName, companyDetails, sendLog);
+        
+        if (score >= 70) {
+          matchedBusiness = item;
+          sendLog(`   ✅ Match found (score: ${score}%): "${item.title}"`);
+          break;
+        } else {
+          sendLog(`   ❌ Rejected (score: ${score}%): "${item.title}"`);
+        }
+      }
+      
+      if (!matchedBusiness && results.length > 0) {
+        sendLog(`   ⚠️ No high-confidence match found - using first result as fallback`);
+        matchedBusiness = results[0];
+      }
+    }
+
+    if (!matchedBusiness) {
+      sendLog(`   ❌ No valid business found`);
+      return { reviews: [], foundUrl: null };
+    }
+
     const reviews: Review[] = [];
     let foundUrl: string | null = null;
     
-    // Process first result (should be the best match)
-    const item = results[0];
-    
     // Capture business details
-    if (item.title) {
-      sendLog(`   🏢 Found: "${item.title}"`);
+    if (matchedBusiness.title) {
+      sendLog(`   🏢 Business: "${matchedBusiness.title}"`);
     }
-    if (item.totalScore) {
-      sendLog(`   ⭐ Rating: ${item.totalScore} stars`);
+    if (matchedBusiness.totalScore) {
+      sendLog(`   ⭐ Rating: ${matchedBusiness.totalScore} stars`);
     }
-    if (item.reviewsCount) {
-      sendLog(`   📊 Total reviews available: ${item.reviewsCount}`);
+    if (matchedBusiness.reviewsCount) {
+      sendLog(`   📊 Total reviews available: ${matchedBusiness.reviewsCount}`);
     }
     
     // Capture the Google Maps URL
-    if (item.url) {
-      foundUrl = item.url;
+    if (matchedBusiness.url) {
+      foundUrl = matchedBusiness.url;
     }
     
     // Process reviews
-    if (item.reviews && Array.isArray(item.reviews)) {
+    if (matchedBusiness.reviews && Array.isArray(matchedBusiness.reviews)) {
       sendLog(`   📝 Processing reviews...`);
       
-      // STRICTLY enforce limit - take only first N reviews (already sorted by newest)
-      const reviewsToProcess = item.reviews.slice(0, limit);
+      const reviewsToProcess = matchedBusiness.reviews.slice(0, limit);
       
       for (const review of reviewsToProcess) {
-        if (reviews.length >= limit) break; // Safety check
+        if (reviews.length >= limit) break;
         
         reviews.push({
           id: `google-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -408,15 +430,126 @@ async function scrapeGoogleWithApify(
       sendLog(`   ⚠️ No reviews found in result`);
     }
 
-    // Final enforcement - just in case
-    const finalReviews = reviews.slice(0, limit);
-    
-    return { reviews: finalReviews, foundUrl };
+    return { reviews: reviews.slice(0, limit), foundUrl };
   } catch (error: any) {
     sendLog(`   ❌ Apify error: ${error.message}`);
     console.error('Apify error details:', error);
     return { reviews: [], foundUrl: null };
   }
+}
+
+// ========================================
+// BUSINESS MATCH VERIFICATION
+// ========================================
+function calculateBusinessMatchScore(
+  item: any,
+  companyName: string,
+  companyDetails: any,
+  sendLog: (msg: string) => void
+): number {
+  let score = 0;
+  const maxScore = 100;
+  
+  // Name matching (50 points max)
+  const itemName = (item.title || '').toLowerCase().trim();
+  const searchName = companyName.toLowerCase().trim();
+  
+  if (itemName === searchName) {
+    score += 50;
+  } else if (itemName.includes(searchName) || searchName.includes(itemName)) {
+    score += 35;
+  } else {
+    // Calculate similarity
+    const similarity = calculateStringSimilarity(itemName, searchName);
+    score += Math.floor(similarity * 50);
+  }
+  
+  // Website matching (25 points)
+  if (companyDetails?.website && item.website) {
+    const normalizedItemWebsite = normalizeUrl(item.website);
+    const normalizedSearchWebsite = normalizeUrl(companyDetails.website);
+    
+    if (normalizedItemWebsite === normalizedSearchWebsite) {
+      score += 25;
+    }
+  }
+  
+  // Phone matching (15 points)
+  if (companyDetails?.phone && item.phone) {
+    const normalizedItemPhone = normalizePhone(item.phone);
+    const normalizedSearchPhone = normalizePhone(companyDetails.phone);
+    
+    if (normalizedItemPhone === normalizedSearchPhone) {
+      score += 15;
+    }
+  }
+  
+  // Address matching (10 points)
+  if (companyDetails?.address && item.address) {
+    const itemAddr = item.address.toLowerCase();
+    const searchAddr = companyDetails.address.toLowerCase();
+    
+    // Check if key parts match (city, zip)
+    const zipMatch = /\d{5}/.exec(searchAddr);
+    if (zipMatch && itemAddr.includes(zipMatch[0])) {
+      score += 10;
+    } else if (itemAddr.includes(searchAddr) || searchAddr.includes(itemAddr)) {
+      score += 5;
+    }
+  }
+  
+  return Math.min(score, maxScore);
+}
+
+function calculateStringSimilarity(str1: string, str2: string): number {
+  const longer = str1.length > str2.length ? str1 : str2;
+  const shorter = str1.length > str2.length ? str2 : str1;
+  
+  if (longer.length === 0) return 1.0;
+  
+  const editDistance = getEditDistance(longer, shorter);
+  return (longer.length - editDistance) / longer.length;
+}
+
+function getEditDistance(str1: string, str2: string): number {
+  const matrix: number[][] = [];
+  
+  for (let i = 0; i <= str2.length; i++) {
+    matrix[i] = [i];
+  }
+  
+  for (let j = 0; j <= str1.length; j++) {
+    matrix[0][j] = j;
+  }
+  
+  for (let i = 1; i <= str2.length; i++) {
+    for (let j = 1; j <= str1.length; j++) {
+      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
+      }
+    }
+  }
+  
+  return matrix[str2.length][str1.length];
+}
+
+function normalizeUrl(url: string): string {
+  return url
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/\/$/, '')
+    .trim();
+}
+
+function normalizePhone(phone: string): string {
+  return phone.replace(/\D/g, '');
 }
 
 // ========================================
@@ -457,7 +590,7 @@ async function scrapeWithSerper(
     // Extract reviews from snippets
     if (data.organic) {
       for (const result of data.organic) {
-        if (reviews.length >= limit) break; // Enforce limit
+        if (reviews.length >= limit) break;
         
         if (result.snippet && result.snippet.length > 50) {
           const ratingMatch = result.snippet.match(/(\d)(?:\.\d)?\s*(?:star|★|stars)/i);
