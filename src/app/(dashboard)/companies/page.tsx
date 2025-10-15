@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useStore } from '@/lib/store';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -14,6 +15,7 @@ import {
   Calendar,
   User,
   ExternalLink,
+  Loader2,
 } from 'lucide-react';
 import Link from 'next/link';
 import { format } from 'date-fns';
@@ -21,9 +23,27 @@ import { useState } from 'react';
 
 export default function CompaniesPage() {
   const companies = useStore((state) => state.companies);
+  const fetchCompanies = useStore((state) => state.fetchCompanies);
+  const fetchIntakes = useStore((state) => state.fetchIntakes);
+  
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [planFilter, setPlanFilter] = useState<string>('ALL');
+  const [loading, setLoading] = useState(true);
+
+  // Fetch companies and intakes from Supabase on mount
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      await Promise.all([
+        fetchCompanies(),
+        fetchIntakes(),
+      ]);
+      setLoading(false);
+    };
+    
+    loadData();
+  }, [fetchCompanies, fetchIntakes]);
 
   const filteredCompanies = companies.filter((company) => {
     const matchesSearch = company.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -50,6 +70,17 @@ export default function CompaniesPage() {
     };
     return colors[plan] || 'bg-slate-100 text-slate-700';
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
+          <p className="text-slate-600">Loading companies from database...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 p-6">
