@@ -83,7 +83,6 @@ export default function DashboardPage() {
 
       <DataManager />
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card className="p-6">
           <div className="flex items-center justify-between">
@@ -154,7 +153,6 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Companies List */}
       <Card className="p-6">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-semibold text-slate-900">Companies</h2>
