@@ -3,7 +3,7 @@ import { NextRequest } from 'next/server';
 const APIFY_API_TOKEN = process.env.APIFY_API_TOKEN;
 const SERPER_API_KEY = process.env.SERPER_API_KEY;
 
-// Configurable limits
+// Configurable limits - gets NEWEST reviews
 const REVIEW_LIMITS = {
   google: 20,      // Premium Apify scraping
   yelp: 10,        // Free Serper scraping
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
             }
 
             if (googleUrl) {
-              sendLog(`🔑 Launching Apify scraper (${REVIEW_LIMITS.google} reviews)...`);
+              sendLog(`🔑 Launching Apify scraper (${REVIEW_LIMITS.google} newest reviews)...`);
 
               const googleReviews = await scrapeGoogleWithApify(
                 companyName,
@@ -241,7 +241,7 @@ async function scrapeGoogleWithApify(
           maxCrawledPlaces: 1,
           language: 'en',
           maxReviews: limit,
-          reviewsSort: 'newest',
+          reviewsSort: 'newest',  // Get newest reviews first
           scrapeReviewerName: true,
           scrapeReviewId: true,
           scrapeReviewUrl: true,
@@ -294,7 +294,10 @@ async function scrapeGoogleWithApify(
     
     for (const item of results) {
       if (item.reviews) {
-        for (const review of item.reviews.slice(0, limit)) {
+        // Strictly enforce limit - only take first N reviews (already sorted by newest)
+        const reviewsToProcess = item.reviews.slice(0, limit);
+        
+        for (const review of reviewsToProcess) {
           reviews.push({
             id: `google-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             author: review.name || 'Google User',
@@ -305,10 +308,17 @@ async function scrapeGoogleWithApify(
             url: url,
           });
         }
+        
+        // Break after first business (we only want 1)
+        break;
       }
     }
 
-    return reviews;
+    // Final safeguard - ensure we never exceed limit
+    const finalReviews = reviews.slice(0, limit);
+    sendLog(`   ✓ Returning ${finalReviews.length} reviews (limit: ${limit})`);
+    
+    return finalReviews;
   } catch (error: any) {
     sendLog(`   ✗ ${error.message}`);
     return [];
