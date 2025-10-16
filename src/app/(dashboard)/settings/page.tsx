@@ -22,9 +22,6 @@ import {
   Copy,
   Check
 } from 'lucide-react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-
-const supabase = createClientComponentClient();
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -94,29 +91,26 @@ export default function SettingsPage() {
 
     setProcessing(true);
     try {
-      // Create user in Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-        email: newUserEmail,
-        password: newUserPassword,
-        email_confirm: true,
-        user_metadata: {
-          name: newUserName,
+      // Call our API route
+      const response = await fetch('/api/create-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
+        body: JSON.stringify({
+          name: newUserName,
+          email: newUserEmail,
+          password: newUserPassword,
+          role: newUserRole,
+          organizationId: currentOrganization?.id,
+        }),
       });
 
-      if (authError) throw authError;
+      const data = await response.json();
 
-      // Add to organization
-      const { error: memberError } = await supabase
-        .from('organization_members')
-        .insert([{
-          organization_id: currentOrganization?.id,
-          user_id: authData.user.id,
-          email: newUserEmail,
-          role: newUserRole,
-        }]);
-
-      if (memberError) throw memberError;
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create user');
+      }
 
       // Store created user info for display
       setCreatedUser({
