@@ -1,189 +1,152 @@
-export interface Company {
+export interface Organization {
   id: string;
   name: string;
-  website: string;
-  logoUrl?: string;
-  contactEmail?: string;
+  ownerId: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface OrganizationMember {
+  id: string;
+  organizationId: string;
+  userId: string;
+  email?: string;
+  role: 'admin' | 'manager' | 'va';
+  createdAt?: string;
+}
+
+export interface Company {
+  id: string;
+  organizationId?: string;
+  name: string;
+  website?: string;
   phone?: string;
+  email?: string;
   address?: string;
-  status: 'NEW' | 'ACTIVE' | 'CHURNED';
-  plan: 'DISCOVER' | 'VERIFIED';
-  assignedVaName?: string;
-  createdAt: string;
-  updatedAt: string;
-  
-  // Review platform URLs
+  city?: string;
+  state?: string;
+  zip?: string;
+  status?: string;
+  plan?: string;
   googleMapsUrl?: string;
   yelpUrl?: string;
   facebookUrl?: string;
-  
-  // Reviews array
-  reviews?: Review[];
+  logoUrl?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Intake {
   id: string;
   companyId: string;
-  status: 'draft' | 'complete';
+  organizationId?: string;
   
-  // Part 1 - Basic Business Information
-  legalCanonicalName?: string;
-  alsoKnownAs?: string;
-  industryCategoryBadges?: string;
+  // Basic Info
+  legalName?: string;
+  displayName?: string;
+  tagline?: string;
+  industryCategory?: string;
   yearEstablished?: string;
-  ownershipHeritage?: string;
-  businessStatus?: string;
-  taglineSlogan?: string;
-  shortDescription?: string;
+  ownerPrincipal?: string;
+  ownershipType?: string;
   verificationTier?: string;
+  businessStatus?: string;
+  shortDescription?: string;
   
-  // Part 2 - Contact Information
-  officialName?: string;
-  website?: string;
-  mainPhone?: string;
-  physicalAddress?: string;
-  onlineOrdering?: string;
-  emails?: string | string[];
-  canonicalDomain?: string;
+  // Contact
+  officePhone?: string;
+  alternatePhone?: string;
+  contactEmail?: string;
+  officeAddress?: string;
   
-  // Part 3 - Geolocation Data
-  latitudeLongitude?: string;
-  geoSource?: string;
+  // Geo
+  latitude?: number;
+  longitude?: number;
   
-  // Part 4 - Service Area / Delivery Zone
-  localFocus?: string;
-  primaryNearbyTowns?: string;
+  // Service Area
+  primaryFocus?: string;
+  highlightedTowns?: string[];
+  serviceRadius?: string;
   
-  // Part 5 - Business Hours & Availability
-  businessHours?: string;
+  // Hours
+  businessHours?: any;
   responseTime?: string;
+  emergencyAvailable?: boolean;
   
-  // Part 6 - Services / Products Offered
-  servicesOffered?: string;
-  
-  // Part 7 - Reviews & Reputation
-  verifiedFiveStarTotal?: string;
-  googleReviewsTotal?: string;
-  reviewLinks?: string;
-  yelpInfo?: string;
-  facebookInfo?: string;
-  tripadvisorInfo?: string;
-  directProfiles?: string;
-  
-  // NEW: Dedicated Google Maps Link Fields
-  googleMapsLink1?: string;
-  googleMapsLink2?: string;
-  googleMapsLink3?: string;
-  googleMapsLink4?: string;
-  googleMapsLink5?: string;
-  
-  // Part 8 - Key Metrics & Differentiators
-  quickFacts?: string;
-  primarySeoKeywords?: string;
-  verifiedFallbackBadges?: string;
-  
-  // Part 9 - Social Media & Media Links
-  socialMediaLinks?: string;
-  instagramUrl?: string;
-  facebookUrl?: string;
-  galleryUrl?: string;
-  recipesUrl?: string;
-  
-  // Part 10 - Visual Assets / Gallery
-  visualAssets?: string;
-  logoUrl?: string;
-  galleryImages?: string[];
-  
-  // Part 11 - FAQs
-  faqs?: string;
-  
-  // Additional Sections
-  changeLogConfidenceGaps?: string;
-  seoSummary?: string;
-  comparativeValueTable?: string;
-  metaTitle?: string;
-  metaDescription?: string;
-  jsonLdSchema?: string;
-  internalLinks?: string;
-  externalCitations?: string;
-  schemaElementsIncluded?: string;
-  aiDiscoveryTier?: string;
-  lastUpdatedDate?: string;
+  // Services
+  services?: any[];
   
   // Reviews
-  reviews?: Review[];
+  verifiedFiveStarTotal?: number;
+  googleReviewsTotal?: number;
+  reviewLinks?: any;
+  reviewNotes?: string;
   
-  // Legacy fields
-  category?: string;
-  founded?: string;
-  licenses?: string;
-  serviceAreas?: string[];
-  shortBlurb?: string;
-  fullAbout?: string;
-  missionStatement?: string;
-  videoLinks?: string[];
-  services?: Array<{ name: string; description: string; price?: string }>;
-  socialProfiles?: {
-    facebook?: string;
-    instagram?: string;
-    linkedin?: string;
-    twitter?: string;
-    youtube?: string;
-    tiktok?: string;
-  };
-  directories?: {
-    googleBusinessFound?: boolean;
-    yelpFound?: boolean;
-    bbbFound?: boolean;
-    linkedinFound?: boolean;
-  };
-  metaKeywords?: string;
-  h1Tag?: string;
-  schemaDetected?: boolean;
-  schemaType?: string;
-  platform?: string;
-  sslEnabled?: boolean;
-  mobileFriendly?: boolean;
-  mapLink?: string;
-  heroImageUrl?: string;
-  notes?: string;
-  verificationLog?: VerificationLogEntry[];
-  lastVerified?: string;
-  createdAt: string;
-  updatedAt: string;
-  completedAt?: string;
-  completedBy?: string;
+  // Metrics
+  yearsInBusiness?: number;
+  licensesCertifications?: string[];
+  warrantyInfo?: string;
+  projectVolume?: string;
+  autoKeywords?: string[];
+  badges?: string[];
+  
+  // Social
+  instagramUrl?: string;
+  facebookUrl?: string;
+  youtubeUrl?: string;
+  linkedinUrl?: string;
+  tiktokUrl?: string;
+  galleryLinks?: string[];
+  pressLinks?: string[];
+  
+  // Gallery
+  beforeAfterImages?: string[];
+  projectGallery?: string[];
+  embeddedVideos?: string[];
+  
+  // FAQs
+  faqs?: any[];
+  
+  // Change Log
+  gbpVerificationStatus?: string;
+  dataGaps?: string;
+  lastDataUpdate?: string;
+  
+  // SEO
+  metaTitle?: string;
+  metaDescription?: string;
+  structuredData?: any;
+  schemaElements?: string[];
+  aiDiscoveryTier?: string;
+  
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Review {
   id: string;
-  author: string;
-  rating: number;
-  text: string;
-  date: string;
-  platform: 'google' | 'yelp' | 'facebook';
+  companyId: string;
+  organizationId?: string;
+  author?: string;
+  rating?: number;
+  text?: string;
+  date?: string;
+  platform?: string;
   url?: string;
-}
-
-export interface VerificationLogEntry {
-  id: string;
-  timestamp: string;
-  field: string;
-  oldValue: string;
-  newValue: string;
-  source: string;
-  changeType: 'verified' | 'updated' | 'added';
+  createdAt?: string;
 }
 
 export interface Task {
   id: string;
   companyId: string;
+  organizationId?: string;
+  userId: string;
   title: string;
-  description: string;
-  status: 'todo' | 'in_progress' | 'done';
-  priority: 'low' | 'medium' | 'high';
+  description?: string;
+  status?: string;
+  priority?: string;
+  dueDate?: string;
   assignedTo?: string;
-  dueAt?: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
 }

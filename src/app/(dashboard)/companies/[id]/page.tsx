@@ -35,9 +35,11 @@ export default function CompanyDetailPage() {
   const fetchCompanies = useStore((state) => state.fetchCompanies);
   const fetchIntakes = useStore((state) => state.fetchIntakes);
   const deleteCompany = useStore((state) => state.deleteCompany);
+  const currentUserRole = useStore((state) => state.currentUserRole);
 
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -91,9 +93,20 @@ export default function CompanyDetailPage() {
   };
 
   const handleDelete = async () => {
-    if (confirm(`Are you sure you want to delete ${company.name}?`)) {
-      await deleteCompany(company.id);
-      router.push('/dashboard');
+    if (!['admin', 'manager'].includes(currentUserRole || '')) {
+      alert('You do not have permission to delete companies');
+      return;
+    }
+
+    if (confirm(`Are you sure you want to delete ${company.name}? This action cannot be undone.`)) {
+      setDeleting(true);
+      try {
+        await deleteCompany(company.id);
+        router.push('/dashboard');
+      } catch (error: any) {
+        alert('Failed to delete company: ' + error.message);
+        setDeleting(false);
+      }
     }
   };
 
@@ -109,7 +122,7 @@ export default function CompanyDetailPage() {
       <Card className="p-6">
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-4">
-            {/* LOGO - FIXED TO SHOW UPLOADED IMAGE */}
+            {/* Logo Display */}
             {company.logoUrl ? (
               <div className="w-16 h-16 rounded-lg overflow-hidden border-2 border-slate-200 bg-white flex items-center justify-center flex-shrink-0">
                 <img 
@@ -195,10 +208,29 @@ export default function CompanyDetailPage() {
                 <Edit className="w-4 h-4 mr-2" />
                 Edit
               </Button>
-              <Button variant="outline" size="sm" onClick={handleDelete} className="text-red-600 hover:text-red-700">
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete
-              </Button>
+              
+              {/* Only show delete button for Admin and Manager */}
+              {['admin', 'manager'].includes(currentUserRole || '') && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleDelete} 
+                  disabled={deleting}
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                >
+                  {deleting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Delete
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
           </div>
         </div>
