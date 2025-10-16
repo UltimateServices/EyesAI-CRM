@@ -17,8 +17,14 @@ import {
   User,
   Loader2,
   Building2,
-  Mail
+  Eye,
+  EyeOff,
+  Copy,
+  Check
 } from 'lucide-react';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+
+const supabase = createClientComponentClient();
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -26,15 +32,28 @@ export default function SettingsPage() {
   const organizationMembers = useStore((state) => state.organizationMembers);
   const currentUserRole = useStore((state) => state.currentUserRole);
   const fetchOrganizationMembers = useStore((state) => state.fetchOrganizationMembers);
-  const addOrganizationMember = useStore((state) => state.addOrganizationMember);
-  const updateMemberRole = useStore((state) => state.updateMemberRole);
   const removeMember = useStore((state) => state.removeMember);
+  const updateMemberRole = useStore((state) => state.updateMemberRole);
 
   const [loading, setLoading] = useState(true);
-  const [showAddMember, setShowAddMember] = useState(false);
-  const [newMemberEmail, setNewMemberEmail] = useState('');
-  const [newMemberRole, setNewMemberRole] = useState<'admin' | 'manager' | 'va'>('va');
+  const [showCreateUser, setShowCreateUser] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  
+  // Form fields
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
+  const [newUserRole, setNewUserRole] = useState<'admin' | 'manager' | 'va'>('va');
+
+  // Success state
+  const [createdUser, setCreatedUser] = useState<{
+    name: string;
+    email: string;
+    password: string;
+    role: string;
+  } | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -45,7 +64,6 @@ export default function SettingsPage() {
     loadData();
   }, [fetchOrganizationMembers]);
 
-  // Redirect if not admin or manager
   useEffect(() => {
     if (!loading && !['admin', 'manager'].includes(currentUserRole || '')) {
       alert('You do not have permission to access settings');
@@ -53,24 +71,81 @@ export default function SettingsPage() {
     }
   }, [currentUserRole, loading, router]);
 
-  const handleAddMember = async () => {
-    if (!newMemberEmail.trim()) {
-      alert('Please enter an email address');
+  const generatePassword = () => {
+    const length = 12;
+    const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+    let password = '';
+    for (let i = 0; i < length; i++) {
+      password += charset.charAt(Math.floor(Math.random() * charset.length));
+    }
+    setNewUserPassword(password);
+  };
+
+  const handleCreateUser = async () => {
+    if (!newUserName.trim() || !newUserEmail.trim() || !newUserPassword.trim()) {
+      alert('Please fill in all fields');
+      return;
+    }
+
+    if (newUserPassword.length < 6) {
+      alert('Password must be at least 6 characters');
       return;
     }
 
     setProcessing(true);
     try {
-      await addOrganizationMember(newMemberEmail, newMemberRole);
-      setNewMemberEmail('');
-      setNewMemberRole('va');
-      setShowAddMember(false);
-      alert('✅ Member added successfully!');
+      // Create user in Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        email: newUserEmail,
+        password: newUserPassword,
+        email_confirm: true,
+        user_metadata: {
+          name: newUserName,
+        },
+      });
+
+      if (authError) throw authError;
+
+      // Add to organization
+      const { error: memberError } = await supabase
+        .from('organization_members')
+        .insert([{
+          organization_id: currentOrganization?.id,
+          user_id: authData.user.id,
+          email: newUserEmail,
+          role: newUserRole,
+        }]);
+
+      if (memberError) throw memberError;
+
+      // Store created user info for display
+      setCreatedUser({
+        name: newUserName,
+        email: newUserEmail,
+        password: newUserPassword,
+        role: newUserRole,
+      });
+
+      // Reset form
+      setNewUserName('');
+      setNewUserEmail('');
+      setNewUserPassword('');
+      setNewUserRole('va');
+      setShowCreateUser(false);
+
+      await fetchOrganizationMembers();
     } catch (error: any) {
-      alert('❌ Failed to add member: ' + error.message);
+      console.error('Create user error:', error);
+      alert('❌ Failed to create user: ' + error.message);
     } finally {
       setProcessing(false);
     }
+  };
+
+  const copyToClipboard = (text: string, field: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
   };
 
   const handleUpdateRole = async (memberId: string, newRole: 'admin' | 'manager' | 'va') => {
@@ -157,6 +232,77 @@ export default function SettingsPage() {
         </div>
       </Card>
 
+      {/* Success Message */}
+      {createdUser && (
+        <Card className="p-6 bg-green-50 border-green-200">
+          <h3 className="font-semibold text-green-900 mb-4 flex items-center gap-2">
+            <Check className="w-5 h-5" />
+            User Created Successfully!
+          </h3>
+          <div className="space-y-3 bg-white rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-600">Name</p>
+                <p className="font-medium text-slate-900">{createdUser.name}</p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => copyToClipboard(createdUser.name, 'name')}
+              >
+                {copiedField === 'name' ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+              </Button>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-600">Email</p>
+                <p className="font-medium text-slate-900">{createdUser.email}</p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => copyToClipboard(createdUser.email, 'email')}
+              >
+                {copiedField === 'email' ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+              </Button>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-600">Password</p>
+                <p className="font-mono font-medium text-slate-900">{createdUser.password}</p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => copyToClipboard(createdUser.password, 'password')}
+              >
+                {copiedField === 'password' ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+              </Button>
+            </div>
+            <div>
+              <p className="text-sm text-slate-600">Role</p>
+              <Badge className={getRoleColor(createdUser.role)}>
+                {createdUser.role.toUpperCase()}
+              </Badge>
+            </div>
+          </div>
+          <p className="text-sm text-green-700 mt-4">
+            📋 Copy these credentials and send them to the user. They can login immediately at{' '}
+            <span className="font-mono bg-white px-2 py-1 rounded">
+              https://eyes-ai-crm.vercel.app/login
+            </span>
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCreatedUser(null)}
+            className="mt-3"
+          >
+            Dismiss
+          </Button>
+        </Card>
+      )}
+
       {/* Team Members */}
       <Card className="p-6">
         <div className="flex items-center justify-between mb-6">
@@ -165,53 +311,114 @@ export default function SettingsPage() {
             <h2 className="text-xl font-semibold text-slate-900">Team Members</h2>
             <Badge variant="secondary">{organizationMembers.length}</Badge>
           </div>
-          <Button onClick={() => setShowAddMember(!showAddMember)} className="gap-2">
+          <Button onClick={() => setShowCreateUser(!showCreateUser)} className="gap-2">
             <UserPlus className="w-4 h-4" />
-            Add Member
+            Create User
           </Button>
         </div>
 
-        {/* Add Member Form */}
-        {showAddMember && (
-          <Card className="p-4 mb-6 bg-blue-50 border-blue-200">
-            <h3 className="font-semibold text-slate-900 mb-3">Add New Member</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+        {/* Create User Form */}
+        {showCreateUser && (
+          <Card className="p-6 mb-6 bg-blue-50 border-blue-200">
+            <h3 className="font-semibold text-slate-900 mb-4">Create New User</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Full Name *
+                </label>
                 <Input
-                  type="email"
-                  placeholder="colleague@company.com"
-                  value={newMemberEmail}
-                  onChange={(e) => setNewMemberEmail(e.target.value)}
+                  type="text"
+                  placeholder="John Doe"
+                  value={newUserName}
+                  onChange={(e) => setNewUserName(e.target.value)}
                   disabled={processing}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Email Address *
+                </label>
+                <Input
+                  type="email"
+                  placeholder="john@company.com"
+                  value={newUserEmail}
+                  onChange={(e) => setNewUserEmail(e.target.value)}
+                  disabled={processing}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Password *
+                </label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Input
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Min. 6 characters"
+                      value={newUserPassword}
+                      onChange={(e) => setNewUserPassword(e.target.value)}
+                      disabled={processing}
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={generatePassword}
+                    disabled={processing}
+                  >
+                    Generate
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Role *
+                </label>
                 <select
-                  value={newMemberRole}
-                  onChange={(e) => setNewMemberRole(e.target.value as any)}
+                  value={newUserRole}
+                  onChange={(e) => setNewUserRole(e.target.value as any)}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
                   disabled={processing}
                 >
-                  <option value="va">VA</option>
-                  <option value="manager">Manager</option>
-                  <option value="admin">Admin</option>
+                  <option value="va">VA - Virtual Assistant</option>
+                  <option value="manager">Manager - Team Lead</option>
+                  <option value="admin">Admin - Full Access</option>
                 </select>
               </div>
             </div>
             <div className="flex gap-2 mt-4">
-              <Button onClick={handleAddMember} disabled={processing}>
+              <Button onClick={handleCreateUser} disabled={processing}>
                 {processing ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Adding...
+                    Creating...
                   </>
                 ) : (
-                  'Add Member'
+                  <>
+                    <UserPlus className="w-4 h-4 mr-2" />
+                    Create User
+                  </>
                 )}
               </Button>
-              <Button variant="outline" onClick={() => setShowAddMember(false)} disabled={processing}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowCreateUser(false);
+                  setNewUserName('');
+                  setNewUserEmail('');
+                  setNewUserPassword('');
+                  setNewUserRole('va');
+                }}
+                disabled={processing}
+              >
                 Cancel
               </Button>
             </div>
@@ -246,7 +453,6 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {/* Role Change Dropdown */}
                   {member.userId !== currentOrganization?.ownerId && (
                     <>
                       <select
@@ -291,7 +497,7 @@ export default function SettingsPage() {
             </div>
             <ul className="text-sm text-slate-600 space-y-1 ml-6">
               <li>• Full access to everything</li>
-              <li>• Manage team members</li>
+              <li>• Create and manage users</li>
               <li>• Create/edit/delete companies</li>
               <li>• Access all settings</li>
             </ul>
@@ -302,7 +508,7 @@ export default function SettingsPage() {
               <h4 className="font-semibold text-slate-900">Manager</h4>
             </div>
             <ul className="text-sm text-slate-600 space-y-1 ml-6">
-              <li>• Add/remove team members</li>
+              <li>• Create and manage users</li>
               <li>• Create/edit/delete companies</li>
               <li>• Access settings</li>
               <li>• Manage all data</li>
