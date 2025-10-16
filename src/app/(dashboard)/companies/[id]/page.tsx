@@ -36,6 +36,7 @@ export default function CompanyDetailPage() {
   const fetchIntakes = useStore((state) => state.fetchIntakes);
   const deleteCompany = useStore((state) => state.deleteCompany);
   const currentUserRole = useStore((state) => state.currentUserRole);
+  const initializeOrganization = useStore((state) => state.initializeOrganization); // ADDED
 
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
@@ -44,6 +45,9 @@ export default function CompanyDetailPage() {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
+      // CRITICAL: Initialize organization FIRST before fetching anything
+      await initializeOrganization();
+      // THEN fetch companies and intakes
       await Promise.all([
         fetchCompanies(),
         fetchIntakes(),
@@ -52,7 +56,7 @@ export default function CompanyDetailPage() {
     };
     
     loadData();
-  }, [fetchCompanies, fetchIntakes]);
+  }, [initializeOrganization, fetchCompanies, fetchIntakes]); // ADDED initializeOrganization to deps
 
   const company = companies.find((c) => c.id === companyId);
   const intake = intakes.find((i) => i.companyId === companyId);
