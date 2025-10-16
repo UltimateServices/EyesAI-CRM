@@ -1,149 +1,31 @@
 import { create } from 'zustand';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { Organization, OrganizationMember, Company, Intake, Review, Task } from './types';
 
 const supabase = createClientComponentClient();
 
-interface Company {
-  id: string;
-  name: string;
-  website?: string;
-  phone?: string;
-  email?: string;
-  address?: string;
-  city?: string;
-  state?: string;
-  zip?: string;
-  status?: string;
-  plan?: string;
-  googleMapsUrl?: string;
-  yelpUrl?: string;
-  facebookUrl?: string;
-  logoUrl?: string;  // ADDED
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-interface Intake {
-  id: string;
-  companyId: string;
-  
-  // Basic Info
-  legalName?: string;
-  displayName?: string;
-  tagline?: string;
-  industryCategory?: string;
-  yearEstablished?: string;
-  ownerPrincipal?: string;
-  ownershipType?: string;
-  verificationTier?: string;
-  businessStatus?: string;
-  shortDescription?: string;
-  
-  // Contact
-  officePhone?: string;
-  alternatePhone?: string;
-  contactEmail?: string;
-  officeAddress?: string;
-  
-  // Geo
-  latitude?: number;
-  longitude?: number;
-  
-  // Service Area
-  primaryFocus?: string;
-  highlightedTowns?: string[];
-  serviceRadius?: string;
-  
-  // Hours
-  businessHours?: any;
-  responseTime?: string;
-  emergencyAvailable?: boolean;
-  
-  // Services
-  services?: any[];
-  
-  // Reviews
-  verifiedFiveStarTotal?: number;
-  googleReviewsTotal?: number;
-  reviewLinks?: any;
-  reviewNotes?: string;
-  
-  // Metrics
-  yearsInBusiness?: number;
-  licensesCertifications?: string[];
-  warrantyInfo?: string;
-  projectVolume?: string;
-  autoKeywords?: string[];
-  badges?: string[];
-  
-  // Social
-  instagramUrl?: string;
-  facebookUrl?: string;
-  youtubeUrl?: string;
-  linkedinUrl?: string;
-  tiktokUrl?: string;
-  galleryLinks?: string[];
-  pressLinks?: string[];
-  
-  // Gallery
-  beforeAfterImages?: string[];
-  projectGallery?: string[];
-  embeddedVideos?: string[];
-  
-  // FAQs
-  faqs?: any[];
-  
-  // Change Log
-  gbpVerificationStatus?: string;
-  dataGaps?: string;
-  lastDataUpdate?: string;
-  
-  // SEO
-  metaTitle?: string;
-  metaDescription?: string;
-  structuredData?: any;
-  schemaElements?: string[];
-  aiDiscoveryTier?: string;
-  
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-interface Review {
-  id: string;
-  companyId: string;
-  author?: string;
-  rating?: number;
-  text?: string;
-  date?: string;
-  platform?: string;
-  url?: string;
-  createdAt?: string;
-}
-
-interface Task {
-  id: string;
-  companyId: string;
-  userId: string;
-  title: string;
-  description?: string;
-  status?: string;
-  priority?: string;
-  dueDate?: string;
-  assignedTo?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
 interface StoreState {
+  // Organization state
+  currentOrganization: Organization | null;
+  organizationMembers: OrganizationMember[];
+  currentUserRole: 'admin' | 'manager' | 'va' | null;
+  
+  // Data state
   companies: Company[];
   intakes: Intake[];
   reviews: Review[];
   tasks: Task[];
   
+  // Organization methods
+  initializeOrganization: () => Promise<void>;
+  fetchOrganizationMembers: () => Promise<void>;
+  addOrganizationMember: (email: string, role: 'admin' | 'manager' | 'va') => Promise<void>;
+  updateMemberRole: (memberId: string, role: 'admin' | 'manager' | 'va') => Promise<void>;
+  removeMember: (memberId: string) => Promise<void>;
+  
   // Company methods
   fetchCompanies: () => Promise<void>;
-  addCompany: (company: Omit<Company, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+  addCompany: (company: Omit<Company, 'id' | 'createdAt' | 'updatedAt' | 'organizationId'>) => Promise<void>;
   updateCompany: (id: string, updates: Partial<Company>) => Promise<void>;
   deleteCompany: (id: string) => Promise<void>;
   
@@ -155,37 +37,214 @@ interface StoreState {
   // Review methods
   fetchReviews: () => Promise<void>;
   addReview: (review: any) => Promise<void>;
-  addReviews: (companyId: string, reviews: Omit<Review, 'id' | 'companyId' | 'createdAt'>[]) => Promise<void>;
+  addReviews: (companyId: string, reviews: Omit<Review, 'id' | 'companyId' | 'createdAt' | 'organizationId'>[]) => Promise<void>;
 
   // Task methods
   fetchTasks: () => Promise<void>;
-  addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+  addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'organizationId'>) => Promise<void>;
   updateTask: (id: string, updates: Partial<Task>) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
 }
 
 export const useStore = create<StoreState>((set, get) => ({
+  currentOrganization: null,
+  organizationMembers: [],
+  currentUserRole: null,
   companies: [],
   intakes: [],
   reviews: [],
   tasks: [],
 
-  // ===== COMPANIES =====
-  fetchCompanies: async () => {
+  // ===== ORGANIZATION =====
+  initializeOrganization: async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // Check if user is member of an organization
+      const { data: membership } = await supabase
+        .from('organization_members')
+        .select('*, organizations(*)')
+        .eq('user_id', user.id)
+        .single();
+
+      if (membership) {
+        // User is already in an organization
+        set({
+          currentOrganization: {
+            id: membership.organizations.id,
+            name: membership.organizations.name,
+            ownerId: membership.organizations.owner_id,
+            createdAt: membership.organizations.created_at,
+            updatedAt: membership.organizations.updated_at,
+          },
+          currentUserRole: membership.role,
+        });
+      } else {
+        // Create new organization for this user
+        const { data: newOrg, error: orgError } = await supabase
+          .from('organizations')
+          .insert([{
+            name: `${user.email}'s Organization`,
+            owner_id: user.id,
+          }])
+          .select()
+          .single();
+
+        if (orgError) throw orgError;
+
+        // Add user as admin member
+        const { error: memberError } = await supabase
+          .from('organization_members')
+          .insert([{
+            organization_id: newOrg.id,
+            user_id: user.id,
+            email: user.email,
+            role: 'admin',
+          }]);
+
+        if (memberError) throw memberError;
+
+        set({
+          currentOrganization: {
+            id: newOrg.id,
+            name: newOrg.name,
+            ownerId: newOrg.owner_id,
+            createdAt: newOrg.created_at,
+            updatedAt: newOrg.updated_at,
+          },
+          currentUserRole: 'admin',
+        });
+      }
+
+      // Fetch members
+      await get().fetchOrganizationMembers();
+    } catch (error) {
+      console.error('Error initializing organization:', error);
+    }
+  },
+
+  fetchOrganizationMembers: async () => {
+    try {
+      const { currentOrganization } = get();
+      if (!currentOrganization) return;
+
+      const { data, error } = await supabase
+        .from('organization_members')
+        .select('*')
+        .eq('organization_id', currentOrganization.id);
+
+      if (error) throw error;
+
+      const members: OrganizationMember[] = (data || []).map((row: any) => ({
+        id: row.id,
+        organizationId: row.organization_id,
+        userId: row.user_id,
+        email: row.email,
+        role: row.role,
+        createdAt: row.created_at,
+      }));
+
+      set({ organizationMembers: members });
+    } catch (error) {
+      console.error('Error fetching members:', error);
+    }
+  },
+
+  addOrganizationMember: async (email: string, role: 'admin' | 'manager' | 'va') => {
+    try {
+      const { currentOrganization, currentUserRole } = get();
+      if (!currentOrganization || !['admin', 'manager'].includes(currentUserRole || '')) {
+        throw new Error('Not authorized to add members');
+      }
+
+      // Check if user exists in auth
+      const { data: userData } = await supabase
+        .from('auth.users')
+        .select('id')
+        .eq('email', email)
+        .single();
+
+      const userId = userData?.id || null;
+
+      // Add member
+      const { error } = await supabase
+        .from('organization_members')
+        .insert([{
+          organization_id: currentOrganization.id,
+          user_id: userId,
+          email: email,
+          role: role,
+        }]);
+
+      if (error) throw error;
+
+      await get().fetchOrganizationMembers();
+    } catch (error) {
+      console.error('Error adding member:', error);
+      throw error;
+    }
+  },
+
+  updateMemberRole: async (memberId: string, role: 'admin' | 'manager' | 'va') => {
+    try {
+      const { currentUserRole } = get();
+      if (!['admin', 'manager'].includes(currentUserRole || '')) {
+        throw new Error('Not authorized to update members');
+      }
+
+      const { error } = await supabase
+        .from('organization_members')
+        .update({ role })
+        .eq('id', memberId);
+
+      if (error) throw error;
+
+      await get().fetchOrganizationMembers();
+    } catch (error) {
+      console.error('Error updating member:', error);
+      throw error;
+    }
+  },
+
+  removeMember: async (memberId: string) => {
+    try {
+      const { currentUserRole } = get();
+      if (!['admin', 'manager'].includes(currentUserRole || '')) {
+        throw new Error('Not authorized to remove members');
+      }
+
+      const { error } = await supabase
+        .from('organization_members')
+        .delete()
+        .eq('id', memberId);
+
+      if (error) throw error;
+
+      await get().fetchOrganizationMembers();
+    } catch (error) {
+      console.error('Error removing member:', error);
+      throw error;
+    }
+  },
+
+  // ===== COMPANIES =====
+  fetchCompanies: async () => {
+    try {
+      const { currentOrganization } = get();
+      if (!currentOrganization) return;
+
       const { data, error } = await supabase
         .from('companies')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('organization_id', currentOrganization.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
       const companies: Company[] = (data || []).map((row: any) => ({
         id: row.id,
+        organizationId: row.organization_id,
         name: row.name,
         website: row.website,
         phone: row.phone,
@@ -199,7 +258,7 @@ export const useStore = create<StoreState>((set, get) => ({
         googleMapsUrl: row.google_maps_url,
         yelpUrl: row.yelp_url,
         facebookUrl: row.facebook_url,
-        logoUrl: row.logo_url,  // ADDED
+        logoUrl: row.logo_url,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       }));
@@ -212,13 +271,13 @@ export const useStore = create<StoreState>((set, get) => ({
 
   addCompany: async (company) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const { currentOrganization } = get();
+      if (!currentOrganization) throw new Error('No organization found');
 
       const { error } = await supabase
         .from('companies')
         .insert([{
-          user_id: user.id,
+          organization_id: currentOrganization.id,
           name: company.name,
           website: company.website,
           phone: company.phone,
@@ -232,13 +291,14 @@ export const useStore = create<StoreState>((set, get) => ({
           google_maps_url: company.googleMapsUrl,
           yelp_url: company.yelpUrl,
           facebook_url: company.facebookUrl,
-          logo_url: company.logoUrl,  // ADDED
+          logo_url: company.logoUrl,
         }]);
 
       if (error) throw error;
       await get().fetchCompanies();
     } catch (error) {
       console.error('Error adding company:', error);
+      throw error;
     }
   },
 
@@ -248,7 +308,6 @@ export const useStore = create<StoreState>((set, get) => ({
         updated_at: new Date().toISOString(),
       };
 
-      // Only include fields that are provided
       if (updates.name !== undefined) updateData.name = updates.name;
       if (updates.website !== undefined) updateData.website = updates.website;
       if (updates.phone !== undefined) updateData.phone = updates.phone;
@@ -262,7 +321,7 @@ export const useStore = create<StoreState>((set, get) => ({
       if (updates.googleMapsUrl !== undefined) updateData.google_maps_url = updates.googleMapsUrl;
       if (updates.yelpUrl !== undefined) updateData.yelp_url = updates.yelpUrl;
       if (updates.facebookUrl !== undefined) updateData.facebook_url = updates.facebookUrl;
-      if (updates.logoUrl !== undefined) updateData.logo_url = updates.logoUrl;  // ADDED
+      if (updates.logoUrl !== undefined) updateData.logo_url = updates.logoUrl;
 
       const { error } = await supabase
         .from('companies')
@@ -279,6 +338,11 @@ export const useStore = create<StoreState>((set, get) => ({
 
   deleteCompany: async (id) => {
     try {
+      const { currentUserRole } = get();
+      if (!['admin', 'manager'].includes(currentUserRole || '')) {
+        throw new Error('Not authorized to delete companies');
+      }
+
       const { error } = await supabase
         .from('companies')
         .delete()
@@ -288,23 +352,26 @@ export const useStore = create<StoreState>((set, get) => ({
       await get().fetchCompanies();
     } catch (error) {
       console.error('Error deleting company:', error);
+      throw error;
     }
   },
 
-  // ===== INTAKES =====
+  // ===== INTAKES ===== (keeping your existing logic, just adding org check)
   fetchIntakes: async () => {
     try {
+      const { currentOrganization } = get();
+      if (!currentOrganization) return;
+
       const { data, error } = await supabase
         .from('intakes')
-        .select('*');
+        .select('*, companies!inner(organization_id)')
+        .eq('companies.organization_id', currentOrganization.id);
 
       if (error) throw error;
 
       const intakes: Intake[] = (data || []).map((row: any) => ({
         id: row.id,
         companyId: row.company_id,
-        
-        // Basic Info
         legalName: row.legal_name,
         displayName: row.display_name,
         tagline: row.tagline,
@@ -315,45 +382,29 @@ export const useStore = create<StoreState>((set, get) => ({
         verificationTier: row.verification_tier,
         businessStatus: row.business_status,
         shortDescription: row.short_description,
-        
-        // Contact
         officePhone: row.office_phone,
         alternatePhone: row.alternate_phone,
         contactEmail: row.contact_email,
         officeAddress: row.office_address,
-        
-        // Geo
         latitude: row.latitude,
         longitude: row.longitude,
-        
-        // Service Area
         primaryFocus: row.primary_focus,
         highlightedTowns: row.highlighted_towns,
         serviceRadius: row.service_radius,
-        
-        // Hours
         businessHours: row.business_hours,
         responseTime: row.response_time,
         emergencyAvailable: row.emergency_available,
-        
-        // Services
         services: row.services,
-        
-        // Reviews
         verifiedFiveStarTotal: row.verified_five_star_total,
         googleReviewsTotal: row.google_reviews_total,
         reviewLinks: row.review_links,
         reviewNotes: row.review_notes,
-        
-        // Metrics
         yearsInBusiness: row.years_in_business,
         licensesCertifications: row.licenses_certifications,
         warrantyInfo: row.warranty_info,
         projectVolume: row.project_volume,
         autoKeywords: row.auto_keywords,
         badges: row.badges,
-        
-        // Social
         instagramUrl: row.instagram_url,
         facebookUrl: row.facebook_url,
         youtubeUrl: row.youtube_url,
@@ -361,27 +412,18 @@ export const useStore = create<StoreState>((set, get) => ({
         tiktokUrl: row.tiktok_url,
         galleryLinks: row.gallery_links,
         pressLinks: row.press_links,
-        
-        // Gallery
         beforeAfterImages: row.before_after_images,
         projectGallery: row.project_gallery,
         embeddedVideos: row.embedded_videos,
-        
-        // FAQs
         faqs: row.faqs,
-        
-        // Change Log
         gbpVerificationStatus: row.gbp_verification_status,
         dataGaps: row.data_gaps,
         lastDataUpdate: row.last_data_update,
-        
-        // SEO
         metaTitle: row.meta_title,
         metaDescription: row.meta_description,
         structuredData: row.structured_data,
         schemaElements: row.schema_elements,
         aiDiscoveryTier: row.ai_discovery_tier,
-        
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       }));
@@ -398,7 +440,6 @@ export const useStore = create<StoreState>((set, get) => ({
 
   saveIntake: async (intake) => {
     try {
-      // Check if intake exists
       const { data: existing } = await supabase
         .from('intakes')
         .select('id')
@@ -407,8 +448,6 @@ export const useStore = create<StoreState>((set, get) => ({
 
       const intakeData = {
         company_id: intake.companyId,
-        
-        // Basic Info
         legal_name: intake.legalName,
         display_name: intake.displayName,
         tagline: intake.tagline,
@@ -419,45 +458,29 @@ export const useStore = create<StoreState>((set, get) => ({
         verification_tier: intake.verificationTier,
         business_status: intake.businessStatus,
         short_description: intake.shortDescription,
-        
-        // Contact
         office_phone: intake.officePhone,
         alternate_phone: intake.alternatePhone,
         contact_email: intake.contactEmail,
         office_address: intake.officeAddress,
-        
-        // Geo
         latitude: intake.latitude,
         longitude: intake.longitude,
-        
-        // Service Area
         primary_focus: intake.primaryFocus,
         highlighted_towns: intake.highlightedTowns,
         service_radius: intake.serviceRadius,
-        
-        // Hours
         business_hours: intake.businessHours,
         response_time: intake.responseTime,
         emergency_available: intake.emergencyAvailable,
-        
-        // Services
         services: intake.services,
-        
-        // Reviews
         verified_five_star_total: intake.verifiedFiveStarTotal,
         google_reviews_total: intake.googleReviewsTotal,
         review_links: intake.reviewLinks,
         review_notes: intake.reviewNotes,
-        
-        // Metrics
         years_in_business: intake.yearsInBusiness,
         licenses_certifications: intake.licensesCertifications,
         warranty_info: intake.warrantyInfo,
         project_volume: intake.projectVolume,
         auto_keywords: intake.autoKeywords,
         badges: intake.badges,
-        
-        // Social
         instagram_url: intake.instagramUrl,
         facebook_url: intake.facebookUrl,
         youtube_url: intake.youtubeUrl,
@@ -465,27 +488,18 @@ export const useStore = create<StoreState>((set, get) => ({
         tiktok_url: intake.tiktokUrl,
         gallery_links: intake.galleryLinks,
         press_links: intake.pressLinks,
-        
-        // Gallery
         before_after_images: intake.beforeAfterImages,
         project_gallery: intake.projectGallery,
         embedded_videos: intake.embeddedVideos,
-        
-        // FAQs
         faqs: intake.faqs,
-        
-        // Change Log
         gbp_verification_status: intake.gbpVerificationStatus,
         data_gaps: intake.dataGaps,
         last_data_update: new Date().toISOString(),
-        
-        // SEO
         meta_title: intake.metaTitle,
         meta_description: intake.metaDescription,
         structured_data: intake.structuredData,
         schema_elements: intake.schemaElements,
         ai_discovery_tier: intake.aiDiscoveryTier,
-        
         updated_at: new Date().toISOString(),
       };
 
@@ -512,9 +526,13 @@ export const useStore = create<StoreState>((set, get) => ({
   // ===== REVIEWS =====
   fetchReviews: async () => {
     try {
+      const { currentOrganization } = get();
+      if (!currentOrganization) return;
+
       const { data, error } = await supabase
         .from('reviews')
-        .select('*')
+        .select('*, companies!inner(organization_id)')
+        .eq('companies.organization_id', currentOrganization.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -591,13 +609,13 @@ export const useStore = create<StoreState>((set, get) => ({
   // ===== TASKS =====
   fetchTasks: async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const { currentOrganization } = get();
+      if (!currentOrganization) return;
 
       const { data, error } = await supabase
         .from('tasks')
-        .select('*')
-        .eq('user_id', user.id)
+        .select('*, companies!inner(organization_id)')
+        .eq('companies.organization_id', currentOrganization.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -683,5 +701,3 @@ export const useStore = create<StoreState>((set, get) => ({
     }
   },
 }));
-
-export type { Company, Intake, Review, Task };
