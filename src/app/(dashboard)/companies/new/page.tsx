@@ -31,6 +31,17 @@ export default function NewCompanyPage() {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  // Auto-format website URL when field loses focus
+  const formatWebsiteUrl = () => {
+    const url = formData.website.trim();
+    if (!url) return;
+
+    // If URL doesn't start with http:// or https://, add https://
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      updateField('website', `https://${url}`);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -41,10 +52,16 @@ export default function NewCompanyPage() {
 
     setSaving(true);
     try {
+      // Format website before submitting
+      const websiteUrl = formData.website.trim();
+      const formattedWebsite = websiteUrl && !websiteUrl.startsWith('http://') && !websiteUrl.startsWith('https://')
+        ? `https://${websiteUrl}`
+        : websiteUrl;
+
       // Add company and wait for it to complete
       await addCompany({
         name: formData.name.trim(),
-        website: formData.website.trim() || undefined,
+        website: formattedWebsite || undefined,
         email: formData.email.trim() || undefined,
         phone: formData.phone.trim() || undefined,
         address: formData.address.trim() || undefined,
@@ -114,13 +131,15 @@ export default function NewCompanyPage() {
                     Website
                   </label>
                   <input
-                    type="url"
+                    type="text"
                     value={formData.website}
                     onChange={(e) => updateField('website', e.target.value)}
+                    onBlur={formatWebsiteUrl}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="https://example.com"
+                    placeholder="example.com or https://example.com"
                     disabled={saving}
                   />
+                  <p className="text-xs text-slate-500 mt-1">https:// will be added automatically</p>
                 </div>
 
                 <div>
@@ -233,14 +252,15 @@ export default function NewCompanyPage() {
                   <label className="block text-sm font-medium text-slate-700 mb-2">
                     Plan
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={formData.plan}
                     onChange={(e) => updateField('plan', e.target.value)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Discover"
                     disabled={saving}
-                  />
+                  >
+                    <option value="discover">Discover</option>
+                    <option value="verified">Verified</option>
+                  </select>
                 </div>
               </div>
             </div>
