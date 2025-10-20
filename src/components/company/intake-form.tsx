@@ -56,7 +56,66 @@ export function IntakeForm({ company }: IntakeFormProps) {
         throw new Error('Invalid ROMA-PDF format. Missing template or version.');
       }
 
-      setFormData(parsed);
+      // Transform the data to match Overview expectations
+      const transformed = {
+        ...parsed,
+        // Fix pricing_information buttons (objects to strings)
+        pricing_information: parsed.pricing_information ? {
+          ...parsed.pricing_information,
+          cta_buttons: parsed.pricing_information.cta_buttons?.map((btn: any) => 
+            typeof btn === 'string' ? btn : btn.label || btn
+          )
+        } : undefined,
+        
+        // Fix get_in_touch buttons (objects to strings)
+        get_in_touch: parsed.get_in_touch ? {
+          ...parsed.get_in_touch,
+          buttons: parsed.get_in_touch.buttons?.map((btn: any) => 
+            typeof btn === 'string' ? btn : btn.label || btn
+          )
+        } : undefined,
+        
+        // Fix quick_reference_guide structure
+        quick_reference_guide: parsed.quick_reference_guide?.table_5x5 ? {
+          columns: parsed.quick_reference_guide.table_5x5.headers,
+          rows: parsed.quick_reference_guide.table_5x5.rows
+        } : parsed.quick_reference_guide,
+        
+        // Fix locations_and_hours structure
+        locations_and_hours: parsed.locations_and_hours ? {
+          primary_location: {
+            address_line1: parsed.locations_and_hours.primary_location?.full_address?.split(',')[0]?.trim() || '',
+            city_state_zip: parsed.locations_and_hours.primary_location?.full_address?.split(',').slice(1).join(',').trim() || '',
+            google_maps_embed_url: parsed.locations_and_hours.primary_location?.coordinates || '<>'
+          },
+          opening_hours: parsed.locations_and_hours.opening_hours,
+          hours_note: parsed.locations_and_hours.hours_note,
+          service_area_text: parsed.locations_and_hours.service_area_text
+        } : undefined,
+        
+        // Fix FAQs structure (q/a to question/answer)
+        faqs: parsed.faqs ? {
+          all_questions: parsed.faqs.all_questions ? 
+            Object.fromEntries(
+              Object.entries(parsed.faqs.all_questions).map(([category, questions]: [string, any]) => [
+                category,
+                questions.map((faq: any) => ({
+                  question: faq.q || faq.question,
+                  answer: faq.a || faq.answer
+                }))
+              ])
+            ) : undefined,
+          whats_new: parsed.faqs.whats_new ? {
+            month_label: parsed.faqs.whats_new.month_label,
+            questions: (parsed.faqs.whats_new.monthly_updates || parsed.faqs.whats_new.questions || []).map((item: any) => ({
+              question: item.q || item.question,
+              answer: item.a || item.answer
+            }))
+          } : undefined
+        } : undefined
+      };
+
+      setFormData(transformed);
       setShowPasteModal(false);
       setPasteText('');
     } catch (error: any) {
