@@ -130,7 +130,7 @@ function createBaselineProfile(companyName: string, website?: string) {
 
 // Enhance baseline with AI research (multiple fallback methods)
 async function enhanceWithResearch(baseProfile: any, companyName: string, website?: string, companyId?: string): Promise<any> {
-  const enhanced = { ...baseProfile };
+  let enhanced = { ...baseProfile };
   
   // Research Method 1: Comprehensive AI research
   try {
