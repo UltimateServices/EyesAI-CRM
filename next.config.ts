@@ -9,6 +9,10 @@ const nextConfig: NextConfig = {
     // Allow production builds to complete even with ESLint errors
     ignoreDuringBuilds: true,
   },
+  experimental: {
+    // Disable turbopack for production builds (Vercel compatibility)
+    turbo: undefined,
+  },
 };
 
 export default nextConfig;
