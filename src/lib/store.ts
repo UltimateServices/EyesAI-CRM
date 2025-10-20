@@ -33,6 +33,7 @@ interface StoreState {
   fetchIntakes: () => Promise<void>;
   getIntakeByCompanyId: (companyId: string) => Intake | undefined;
   saveIntake: (intake: any) => Promise<void>;
+  updateCompanyFromIntake: (companyId: string, intake: Intake) => Promise<void>;
 
   // Review methods
   fetchReviews: () => Promise<void>;
@@ -356,7 +357,7 @@ export const useStore = create<StoreState>((set, get) => ({
     }
   },
 
-  // ===== INTAKES ===== (keeping your existing logic, just adding org check)
+  // ===== INTAKES =====
   fetchIntakes: async () => {
     try {
       const { currentOrganization } = get();
@@ -372,6 +373,10 @@ export const useStore = create<StoreState>((set, get) => ({
       const intakes: Intake[] = (data || []).map((row: any) => ({
         id: row.id,
         companyId: row.company_id,
+        status: row.status,
+        romaData: row.roma_data,
+        completedAt: row.completed_at,
+        completedBy: row.completed_by,
         legalName: row.legal_name,
         displayName: row.display_name,
         tagline: row.tagline,
@@ -448,6 +453,11 @@ export const useStore = create<StoreState>((set, get) => ({
 
       const intakeData = {
         company_id: intake.companyId,
+        status: intake.status || 'draft',
+        roma_data: intake.romaData || null,
+        completed_at: intake.completedAt || null,
+        completed_by: intake.completedBy || null,
+        // Keep all the old fields for backwards compatibility
         legal_name: intake.legalName,
         display_name: intake.displayName,
         tagline: intake.tagline,
@@ -519,6 +529,18 @@ export const useStore = create<StoreState>((set, get) => ({
       await get().fetchIntakes();
     } catch (error) {
       console.error('Error saving intake:', error);
+      throw error;
+    }
+  },
+
+  updateCompanyFromIntake: async (companyId: string, intake: Intake) => {
+    try {
+      // Update company status to active when intake is complete
+      if (intake.status === 'complete') {
+        await get().updateCompany(companyId, { status: 'active' });
+      }
+    } catch (error) {
+      console.error('Error updating company from intake:', error);
       throw error;
     }
   },
