@@ -40,6 +40,14 @@ export interface Intake {
   id: string;
   companyId: string;
   organizationId?: string;
+  status?: 'draft' | 'complete';
+  
+  // ROMA-PDF Data (NEW)
+  romaData?: any;
+  
+  // Completion Info (NEW)
+  completedAt?: string;
+  completedBy?: string;
   
   // Basic Info
   legalName?: string;
