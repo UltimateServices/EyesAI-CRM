@@ -92,7 +92,12 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
   // Helper: Get location address lines (handles ALL formats)
   const getLocationAddress = (): string[] => {
     const locHours = data.locations_and_hours;
-    if (!locHours) return [];
+    if (!locHours) {
+      console.log('❌ No locations_and_hours data');
+      return [];
+    }
+    
+    console.log('📍 Location data:', locHours);
     
     const primaryLoc = locHours.primary_location;
     
@@ -113,8 +118,11 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
       primaryLoc?.address
     ];
     
+    console.log('🔍 Checking full address fields:', fullAddressFields);
+    
     for (const addr of fullAddressFields) {
       if (isRealValue(addr)) {
+        console.log('✅ Found full address:', addr);
         return [addr];
       }
     }
@@ -137,6 +145,8 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
     const state = primaryLoc?.state || locHours.state || primaryLoc?.addressRegion || locHours.addressRegion;
     const zip = primaryLoc?.zip || locHours.zip || primaryLoc?.postalCode || locHours.postalCode;
     
+    console.log('🏙️ City/State/Zip:', { city, state, zip });
+    
     // Build city/state/zip line if we have city and state
     if (city && state) {
       const cityParts = [city, state, zip].filter(isRealValue);
@@ -145,14 +155,17 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
     
     // Return if we have anything
     if (addressLines.length > 0) {
+      console.log('✅ Built address lines:', addressLines);
       return addressLines;
     }
     
     // Check for city_state combined field
     if (isRealValue(locHours.city_state)) {
+      console.log('✅ Found city_state:', locHours.city_state);
       return [locHours.city_state];
     }
     
+    console.log('❌ No valid location found');
     // Nothing found - return empty
     return [];
   };
@@ -254,15 +267,23 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
       );
     }
     
-    // Format 2: Object with day keys (Major, Car Shipping, Idaho)
+    // Format 2: Object with day keys - SORT BY DAY ORDER
     if (typeof hours === 'object' && hours !== null) {
       const entries = Object.entries(hours);
       
       if (entries.length === 0) return null;
       
+      // Sort days in proper order
+      const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+      const sortedEntries = entries.sort((a, b) => {
+        const dayA = a[0].toLowerCase();
+        const dayB = b[0].toLowerCase();
+        return dayOrder.indexOf(dayA) - dayOrder.indexOf(dayB);
+      });
+      
       return (
         <>
-          {entries.map(([day, hoursStr]: [string, any]) => (
+          {sortedEntries.map(([day, hoursStr]: [string, any]) => (
             <div key={day} className="flex justify-between items-start text-sm gap-4">
               <span className="font-medium capitalize text-slate-700">{day}</span>
               {formatHoursString(safeString(hoursStr))}
