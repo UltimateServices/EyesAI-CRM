@@ -96,51 +96,62 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
     
     const primaryLoc = locHours.primary_location;
     
+    // Helper to check if a value is actually a real address component (not "<>" or empty)
+    const isRealValue = (val: any): boolean => {
+      if (!val) return false;
+      if (val === '<>') return false;
+      if (typeof val === 'string' && val.trim() === '') return false;
+      return true;
+    };
+    
     // Try Pattern 1: primary_location.full_address (Major Dumpsters)
-    if (primaryLoc && primaryLoc.full_address) {
+    if (primaryLoc && isRealValue(primaryLoc.full_address)) {
       return [primaryLoc.full_address];
     }
     
-    // Try Pattern 2: Build from primary_location fields
+    // Try Pattern 2: Build from primary_location fields (Idaho, Car Shipping)
     if (primaryLoc) {
-      const lines: string[] = [];
-      
       // Get street address (handle both address_line_1 and address_line1)
       const street1 = primaryLoc.address_line_1 || primaryLoc.address_line1;
       const street2 = primaryLoc.address_line_2 || primaryLoc.address_line2;
-      
-      if (street1) lines.push(street1);
-      if (street2) lines.push(street2);
       
       // Get city/state/zip from primary_location OR fall back to root level
       const city = primaryLoc.city || locHours.city;
       const state = primaryLoc.state || locHours.state;
       const zip = primaryLoc.zip || locHours.zip;
       
-      const cityParts = [city, state, zip].filter(Boolean);
-      if (cityParts.length > 0) {
-        lines.push(cityParts.join(', '));
+      // Build the address lines ONLY if we have real values
+      const addressLines: string[] = [];
+      
+      // Add street lines if they're real
+      if (isRealValue(street1)) addressLines.push(street1);
+      if (isRealValue(street2)) addressLines.push(street2);
+      
+      // ALWAYS add city/state/zip if we have at least city and state
+      if (city && state) {
+        const cityParts = [city, state, zip].filter(isRealValue);
+        addressLines.push(cityParts.join(', '));
       }
       
-      // Only return if we have complete address (street + city/state)
-      if (lines.length >= 2) {
-        return lines;
+      // Return if we have anything
+      if (addressLines.length > 0) {
+        return addressLines;
       }
     }
     
     // Try Pattern 3: Direct full_address at root level (Captain Mike's, ZoRoCo)
-    if (locHours.full_address) {
+    if (isRealValue(locHours.full_address)) {
       return [locHours.full_address];
     }
     
     // Try Pattern 4: city_state field (Captain Mike's)
-    if (locHours.city_state) {
+    if (isRealValue(locHours.city_state)) {
       return [locHours.city_state];
     }
     
     // Try Pattern 5: Fallback to any city + state we can find
-    const city = (primaryLoc && primaryLoc.city) || locHours.city || '';
-    const state = (primaryLoc && primaryLoc.state) || locHours.state || '';
+    const city = (primaryLoc && primaryLoc.city) || locHours.city;
+    const state = (primaryLoc && primaryLoc.state) || locHours.state;
     
     if (city && state) {
       return [`${city}, ${state}`];
