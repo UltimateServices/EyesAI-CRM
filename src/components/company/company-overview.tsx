@@ -330,36 +330,65 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
         </Card>
       )}
 
-      {/* Location & Hours - FIXED TO HANDLE BOTH primary_location AND locations[] */}
+      {/* Location & Hours - Handles ALL formats */}
       {data.locations_and_hours && (
         <Card className="p-6">
           <h2 className="text-xl font-bold text-slate-900 mb-6">Location(s)</h2>
           
-          {/* FIXED: Check for primary_location first */}
-          {data.locations_and_hours.primary_location && (
-            <div className="mb-6">
-              <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
-                <MapPin className="w-5 h-5 text-blue-600" />
-                Primary Location
-              </h3>
-              <div className="space-y-2 ml-7">
-                {(() => {
-                  const loc = data.locations_and_hours.primary_location;
-                  const addressParts = [];
-                  
-                  if (loc.address_line_1) addressParts.push(loc.address_line_1);
-                  if (loc.address_line_2) addressParts.push(loc.address_line_2);
-                  
-                  const cityStateZip = [loc.city, loc.state, loc.zip].filter(Boolean).join(', ');
-                  if (cityStateZip) addressParts.push(cityStateZip);
-                  
-                  return addressParts.map((line, idx) => (
-                    <p key={idx} className="text-slate-700">{line}</p>
-                  ));
-                })()}
-              </div>
-            </div>
-          )}
+          {/* Primary Location - Handles ALL 5 patterns */}
+          {(() => {
+            const locHours = data.locations_and_hours;
+            const primaryLoc = locHours.primary_location;
+            let addressLines: string[] = [];
+            
+            // Pattern 1: primary_location.full_address (Major Dumpsters)
+            if (primaryLoc?.full_address) {
+              addressLines = [primaryLoc.full_address];
+            }
+            // Pattern 2: primary_location with address_line_1 (Car Shipping Kings)
+            else if (primaryLoc?.address_line_1) {
+              if (primaryLoc.address_line_1) addressLines.push(primaryLoc.address_line_1);
+              if (primaryLoc.address_line_2) addressLines.push(primaryLoc.address_line_2);
+              const cityStateZip = [primaryLoc.city, primaryLoc.state, primaryLoc.zip].filter(Boolean).join(', ');
+              if (cityStateZip) addressLines.push(cityStateZip);
+            }
+            // Pattern 3: primary_location with address_line1 (Idaho Supreme - note: line1 not line_1)
+            else if (primaryLoc?.address_line1) {
+              if (primaryLoc.address_line1) addressLines.push(primaryLoc.address_line1);
+              if (primaryLoc.address_line2) addressLines.push(primaryLoc.address_line2);
+              const cityStateZip = [primaryLoc.city, primaryLoc.state, primaryLoc.zip].filter(Boolean).join(', ');
+              if (cityStateZip) addressLines.push(cityStateZip);
+            }
+            // Pattern 4: Direct full_address (Captain Mike's, ZoRoCo)
+            else if (locHours.full_address) {
+              addressLines = [locHours.full_address];
+            }
+            // Pattern 5: Fallback to city_state if available (Captain Mike's)
+            else if (locHours.city_state) {
+              addressLines = [locHours.city_state];
+            }
+            // Pattern 6: Last resort - extract city + state from primary_location
+            else if (primaryLoc?.city && primaryLoc?.state) {
+              addressLines = [`${primaryLoc.city}, ${primaryLoc.state}`];
+            }
+            
+            if (addressLines.length > 0) {
+              return (
+                <div className="mb-6">
+                  <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                    <MapPin className="w-5 h-5 text-blue-600" />
+                    Primary Location
+                  </h3>
+                  <div className="space-y-2 ml-7">
+                    {addressLines.map((line, idx) => (
+                      <p key={idx} className="text-slate-700">{line}</p>
+                    ))}
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          })()}
 
           {/* Multiple Locations Array */}
           {safeArray(data.locations_and_hours.locations).length > 0 && (
@@ -421,23 +450,53 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
             </div>
           )}
 
-          {/* General Hours (if no location-specific hours) */}
-          {data.locations_and_hours.opening_hours && Object.keys(data.locations_and_hours.opening_hours).length > 0 && (
-            <div>
-              <h3 className="font-semibold text-slate-900 mb-3">Hours of Operation</h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {Object.entries(data.locations_and_hours.opening_hours).map(([day, hours]: [string, any]) => (
-                  <div key={day} className="flex justify-between text-sm">
-                    <span className="font-medium capitalize text-slate-700">{day}</span>
-                    <span className="text-slate-600">{safeString(hours)}</span>
+          {/* General Hours - Handles both OBJECT and ARRAY formats */}
+          {(() => {
+            const hours = data.locations_and_hours.opening_hours;
+            if (!hours) return null;
+            
+            // Check if it's an array (ZoRoCo format)
+            if (Array.isArray(hours) && hours.length > 0) {
+              return (
+                <div>
+                  <h3 className="font-semibold text-slate-900 mb-3">Hours of Operation</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {hours.map((item: any, idx: number) => (
+                      <div key={idx} className="flex justify-between text-sm">
+                        <span className="font-medium text-slate-700">{item.day}</span>
+                        <span className="text-slate-600">{item.hours}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-              {data.locations_and_hours.hours_note && (
-                <p className="text-sm text-slate-500 mt-3">{data.locations_and_hours.hours_note}</p>
-              )}
-            </div>
-          )}
+                  {data.locations_and_hours.hours_note && (
+                    <p className="text-sm text-slate-500 mt-3">{data.locations_and_hours.hours_note}</p>
+                  )}
+                </div>
+              );
+            }
+            
+            // Otherwise it's an object (Major, Car Shipping, etc.)
+            if (typeof hours === 'object' && Object.keys(hours).length > 0) {
+              return (
+                <div>
+                  <h3 className="font-semibold text-slate-900 mb-3">Hours of Operation</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {Object.entries(hours).map(([day, hoursStr]: [string, any]) => (
+                      <div key={day} className="flex justify-between text-sm">
+                        <span className="font-medium capitalize text-slate-700">{day}</span>
+                        <span className="text-slate-600">{safeString(hoursStr)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {data.locations_and_hours.hours_note && (
+                    <p className="text-sm text-slate-500 mt-3">{data.locations_and_hours.hours_note}</p>
+                  )}
+                </div>
+              );
+            }
+            
+            return null;
+          })()}
         </Card>
       )}
 
