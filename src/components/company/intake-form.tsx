@@ -215,7 +215,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
             }
           }
           
-          let opening_hours = lh.opening_hours || lh.hours || {};
+          let opening_hours = lh.opening_hours || lh.hours || lh.primary_location?.opening_hours || {};
           if (Array.isArray(opening_hours)) {
             const hoursObj: any = {};
             opening_hours.forEach((day: any) => {
@@ -236,8 +236,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
           return {
             locations,
             opening_hours,
-            hours_note: lh.hours_note || lh.note || '',
-            service_area_text: lh.service_area_text || lh.service_area || ''
+            hours_note: lh.hours_note || lh.note || lh.primary_location?.hours_note || '',
+            service_area_text: lh.service_area_text || lh.service_area || lh.primary_location?.service_area_text || ''
           };
         })(),
         
