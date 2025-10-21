@@ -94,7 +94,6 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
     const locHours = data.locations_and_hours;
     if (!locHours) return [];
     
-    const lines: string[] = [];
     const primaryLoc = locHours.primary_location;
     
     // Try Pattern 1: primary_location.full_address (Major Dumpsters)
@@ -102,43 +101,44 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
       return [primaryLoc.full_address];
     }
     
-    // Try Pattern 2: primary_location.address_line_1 (Car Shipping Kings - underscore)
-    if (primaryLoc && primaryLoc.address_line_1) {
-      if (primaryLoc.address_line_1) lines.push(primaryLoc.address_line_1);
-      if (primaryLoc.address_line_2) lines.push(primaryLoc.address_line_2);
+    // Try Pattern 2: Build from primary_location fields
+    if (primaryLoc) {
+      const lines: string[] = [];
       
-      const cityParts = [primaryLoc.city, primaryLoc.state, primaryLoc.zip].filter(Boolean);
+      // Get street address (handle both address_line_1 and address_line1)
+      const street1 = primaryLoc.address_line_1 || primaryLoc.address_line1;
+      const street2 = primaryLoc.address_line_2 || primaryLoc.address_line2;
+      
+      if (street1) lines.push(street1);
+      if (street2) lines.push(street2);
+      
+      // Get city/state/zip from primary_location OR fall back to root level
+      const city = primaryLoc.city || locHours.city;
+      const state = primaryLoc.state || locHours.state;
+      const zip = primaryLoc.zip || locHours.zip;
+      
+      const cityParts = [city, state, zip].filter(Boolean);
       if (cityParts.length > 0) {
         lines.push(cityParts.join(', '));
       }
       
-      return lines;
-    }
-    
-    // Try Pattern 3: primary_location.address_line1 (Idaho Supreme - NO underscore)
-    if (primaryLoc && primaryLoc.address_line1) {
-      if (primaryLoc.address_line1) lines.push(primaryLoc.address_line1);
-      if (primaryLoc.address_line2) lines.push(primaryLoc.address_line2);
-      
-      const cityParts = [primaryLoc.city, primaryLoc.state, primaryLoc.zip].filter(Boolean);
-      if (cityParts.length > 0) {
-        lines.push(cityParts.join(', '));
+      // Only return if we have complete address (street + city/state)
+      if (lines.length >= 2) {
+        return lines;
       }
-      
-      return lines;
     }
     
-    // Try Pattern 4: Direct full_address at root level (Captain Mike's, ZoRoCo)
+    // Try Pattern 3: Direct full_address at root level (Captain Mike's, ZoRoCo)
     if (locHours.full_address) {
       return [locHours.full_address];
     }
     
-    // Try Pattern 5: city_state field (Captain Mike's)
+    // Try Pattern 4: city_state field (Captain Mike's)
     if (locHours.city_state) {
       return [locHours.city_state];
     }
     
-    // Try Pattern 6: Fallback to individual city + state fields
+    // Try Pattern 5: Fallback to any city + state we can find
     const city = (primaryLoc && primaryLoc.city) || locHours.city || '';
     const state = (primaryLoc && primaryLoc.state) || locHours.state || '';
     
@@ -200,6 +200,32 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
     };
   };
 
+  // Helper: Clean and format hours string
+  const formatHoursString = (hoursStr: string): JSX.Element => {
+    // Detect if hours contain multiple segments (Office, Shipping, etc.)
+    const hasMultipleSegments = hoursStr.includes('Office:') || 
+                                 hoursStr.includes('Shipping:') || 
+                                 hoursStr.includes('|');
+    
+    if (hasMultipleSegments) {
+      // Split by pipe and clean up each segment
+      const segments = hoursStr.split('|').map(s => s.trim());
+      
+      return (
+        <div className="text-right">
+          {segments.map((segment, idx) => (
+            <div key={idx} className="text-slate-600 text-xs leading-relaxed">
+              {segment}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    
+    // Simple hours string
+    return <span className="text-slate-600">{hoursStr}</span>;
+  };
+
   // Helper: Render hours (handles BOTH object and array formats)
   const renderHours = () => {
     const hours = data.locations_and_hours?.opening_hours;
@@ -215,16 +241,16 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
       return (
         <>
           {hours.map((item: any, idx: number) => (
-            <div key={idx} className="flex justify-between text-sm">
+            <div key={idx} className="flex justify-between items-start text-sm gap-4">
               <span className="font-medium text-slate-700">{item.day}</span>
-              <span className="text-slate-600">{item.hours}</span>
+              {formatHoursString(safeString(item.hours))}
             </div>
           ))}
         </>
       );
     }
     
-    // Format 2: Object with day keys (Major, Car Shipping)
+    // Format 2: Object with day keys (Major, Car Shipping, Idaho)
     if (typeof hours === 'object' && hours !== null) {
       const entries = Object.entries(hours);
       
@@ -233,9 +259,9 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
       return (
         <>
           {entries.map(([day, hoursStr]: [string, any]) => (
-            <div key={day} className="flex justify-between text-sm">
+            <div key={day} className="flex justify-between items-start text-sm gap-4">
               <span className="font-medium capitalize text-slate-700">{day}</span>
-              <span className="text-slate-600">{safeString(hoursStr)}</span>
+              {formatHoursString(safeString(hoursStr))}
             </div>
           ))}
         </>
@@ -615,7 +641,7 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
           {hoursContent && (
             <div>
               <h3 className="font-semibold text-slate-900 mb-3">Hours of Operation</h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div className="space-y-2">
                 {hoursContent}
               </div>
               {data.locations_and_hours.hours_note && (
