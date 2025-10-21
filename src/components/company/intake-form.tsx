@@ -63,7 +63,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
         // FIX 1: Normalize hero section
         hero: parsed.hero ? {
           business_name: parsed.hero.business_name || parsed.hero.company_name || '',
-          tagline: parsed.hero.tagline || '',
+          tagline: parsed.hero.tagline || parsed.hero.primary_tagline || '',
           hero_image_url: parsed.hero.hero_image_url || '<>',
           badges: parsed.hero.badges || [],
           
@@ -119,7 +119,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
           return undefined;
         })(),
         
-        // FIX 6: locations_and_hours - COMPLETE REWRITE FOR ALL FORMATS
+        // FIX 6: locations_and_hours - HANDLE ALL FORMATS (STRING, OBJECT, ARRAY)
         locations_and_hours: (() => {
           const lh = parsed.locations_and_hours;
           if (!lh) return undefined;
@@ -133,11 +133,16 @@ export function IntakeForm({ company }: IntakeFormProps) {
               let address_line1 = loc.address_line1 || loc.address || '';
               let city_state_zip = loc.city_state_zip || loc.city_state || '';
               
-              // Split full_address if present
-              if (loc.full_address && !address_line1) {
+              // Handle full_address as STRING
+              if (typeof loc.full_address === 'string' && !address_line1) {
                 const parts = loc.full_address.split(',');
                 address_line1 = parts[0]?.trim() || '';
                 city_state_zip = parts.slice(1).join(',').trim() || '';
+              }
+              // Handle full_address as OBJECT
+              else if (loc.full_address && typeof loc.full_address === 'object') {
+                address_line1 = loc.full_address.street || '';
+                city_state_zip = `${loc.full_address.city || ''}, ${loc.full_address.state || ''} ${loc.full_address.zip || ''}`.trim();
               }
               
               return {
@@ -156,10 +161,16 @@ export function IntakeForm({ company }: IntakeFormProps) {
             let address_line1 = pl.address_line1 || '';
             let city_state_zip = pl.city_state_zip || '';
             
-            if (pl.full_address && !address_line1) {
+            // Handle full_address as STRING
+            if (typeof pl.full_address === 'string' && !address_line1) {
               const parts = pl.full_address.split(',');
               address_line1 = parts[0]?.trim() || '';
               city_state_zip = parts.slice(1).join(',').trim() || '';
+            }
+            // Handle full_address as OBJECT (H Academy format)
+            else if (pl.full_address && typeof pl.full_address === 'object') {
+              address_line1 = pl.full_address.street || '';
+              city_state_zip = `${pl.full_address.city || ''}, ${pl.full_address.state || ''} ${pl.full_address.zip || ''}`.trim();
             }
             
             locations = [{
@@ -176,10 +187,16 @@ export function IntakeForm({ company }: IntakeFormProps) {
             let address_line1 = lh.address_line1 || '';
             let city_state_zip = lh.city_state_zip || '';
             
-            if (lh.full_address && !address_line1) {
+            // Handle full_address as STRING
+            if (typeof lh.full_address === 'string' && !address_line1) {
               const parts = lh.full_address.split(',');
               address_line1 = parts[0]?.trim() || '';
               city_state_zip = parts.slice(1).join(',').trim() || '';
+            }
+            // Handle full_address as OBJECT
+            else if (lh.full_address && typeof lh.full_address === 'object') {
+              address_line1 = lh.full_address.street || '';
+              city_state_zip = `${lh.full_address.city || ''}, ${lh.full_address.state || ''} ${lh.full_address.zip || ''}`.trim();
             }
             
             locations = [{
@@ -192,9 +209,25 @@ export function IntakeForm({ company }: IntakeFormProps) {
             }];
           }
           
+          // NORMALIZE opening_hours - convert array to object
+          let opening_hours = lh.opening_hours || {};
+          if (Array.isArray(lh.opening_hours)) {
+            opening_hours = {};
+            lh.opening_hours.forEach((day: any) => {
+              const dayName = day.day?.toLowerCase() || '';
+              if (dayName) {
+                if (day.open === 'Closed' || day.close === 'Closed') {
+                  opening_hours[dayName] = 'Closed';
+                } else {
+                  opening_hours[dayName] = `${day.open} - ${day.close}`;
+                }
+              }
+            });
+          }
+          
           return {
             locations,  // Always an array now
-            opening_hours: lh.opening_hours || {},
+            opening_hours,  // Always an object now
             hours_note: lh.hours_note || '',
             service_area_text: lh.service_area_text || ''
           };
@@ -223,6 +256,15 @@ export function IntakeForm({ company }: IntakeFormProps) {
               }))
             } : undefined
           };
+        })(),
+        
+        // FIX 8: what_to_expect - handle both array and object with cards
+        what_to_expect: (() => {
+          const wte = parsed.what_to_expect;
+          if (!wte) return undefined;
+          if (Array.isArray(wte)) return wte;
+          if (wte.cards && Array.isArray(wte.cards)) return wte.cards;
+          return undefined;
         })()
       };
 
@@ -325,7 +367,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
   };
 
   const removeWhatToExpect = (index: number) => {
-    const cards = [...formData.what_to_expect];
+    const cards = [...(formData.what_to_expect || [])];
     cards.splice(index, 1);
     updateField('what_to_expect', cards);
   };
@@ -795,7 +837,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
                 onClick={addWhatToExpect}
                 size="sm"
                 variant="outline"
-                disabled={formData.what_to_expect?.length >= 6}
+                disabled={(formData.what_to_expect || []).length >= 6}
               >
                 <Plus className="w-4 h-4 mr-2" />
                 Add Card
@@ -803,7 +845,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
             </div>
 
             <div className="space-y-4">
-              {formData.what_to_expect?.map((card: any, index: number) => (
+              {(formData.what_to_expect || []).map((card: any, index: number) => (
                 <div key={index} className="p-4 border-2 border-slate-200 rounded-lg relative">
                   <Button
                     onClick={() => removeWhatToExpect(index)}
@@ -823,7 +865,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
                         type="text"
                         value={card.emoji || ''}
                         onChange={(e) => {
-                          const cards = [...formData.what_to_expect];
+                          const cards = [...(formData.what_to_expect || [])];
                           cards[index].emoji = e.target.value;
                           updateField('what_to_expect', cards);
                         }}
@@ -837,7 +879,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
                         type="text"
                         value={card.title || ''}
                         onChange={(e) => {
-                          const cards = [...formData.what_to_expect];
+                          const cards = [...(formData.what_to_expect || [])];
                           cards[index].title = e.target.value;
                           updateField('what_to_expect', cards);
                         }}
@@ -851,7 +893,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
                         type="text"
                         value={card.recommended_for || ''}
                         onChange={(e) => {
-                          const cards = [...formData.what_to_expect];
+                          const cards = [...(formData.what_to_expect || [])];
                           cards[index].recommended_for = e.target.value;
                           updateField('what_to_expect', cards);
                         }}
@@ -864,7 +906,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
                       <textarea
                         value={card.whats_involved?.join(', ') || ''}
                         onChange={(e) => {
-                          const cards = [...formData.what_to_expect];
+                          const cards = [...(formData.what_to_expect || [])];
                           cards[index].whats_involved = e.target.value.split(',').map((i: string) => i.trim());
                           updateField('what_to_expect', cards);
                         }}
@@ -878,7 +920,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
                       <textarea
                         value={card.pro_tip || ''}
                         onChange={(e) => {
-                          const cards = [...formData.what_to_expect];
+                          const cards = [...(formData.what_to_expect || [])];
                           cards[index].pro_tip = e.target.value;
                           updateField('what_to_expect', cards);
                         }}
@@ -888,7 +930,9 @@ export function IntakeForm({ company }: IntakeFormProps) {
                     </div>
                   </div>
                 </div>
-              )) || (
+              ))}
+              
+              {(formData.what_to_expect || []).length === 0 && (
                 <div className="p-8 bg-red-50 border-2 border-red-300 rounded-lg text-center">
                   <p className="text-red-800 font-medium">No cards. Click "Add Card" to create one.</p>
                 </div>
