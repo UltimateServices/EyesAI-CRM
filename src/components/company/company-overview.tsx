@@ -464,11 +464,11 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
         </Card>
       )}
 
-      {/* Photo Gallery - UPDATED TO SHOW BOTH INTAKE AND UPLOADED IMAGES */}
+      {/* Photo Gallery - FIXED TO READ FROM intake.galleryLinks */}
       <Card className="p-6">
         <h2 className="text-xl font-bold text-slate-900 mb-6">📸 Photo Gallery</h2>
         {(() => {
-          // Combine intake images + uploaded images
+          // Combine intake ROMA images + Media tab uploaded images
           const intakeImages = safeArray(data.photo_gallery?.images)
             .filter((img: any) => img.image_url && img.image_url !== '<>')
             .map((img: any) => ({
@@ -477,13 +477,12 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
               source: 'intake'
             }));
           
-          const uploadedImages = safeArray(company.media?.gallery)
-            .map((img: any) => ({
-              url: img.url,
-              alt: img.alt || 'Uploaded image',
-              source: 'uploaded',
-              uploadedAt: img.uploadedAt,
-              uploadedBy: img.uploadedBy
+          // FIXED: Read from intake.galleryLinks (array of strings)
+          const uploadedImages = safeArray(intake?.galleryLinks)
+            .map((url: string) => ({
+              url: url,
+              alt: 'Uploaded image',
+              source: 'uploaded'
             }));
           
           const allImages = [...intakeImages, ...uploadedImages];
