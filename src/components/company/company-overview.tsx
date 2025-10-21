@@ -306,36 +306,60 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
         </Card>
       )}
 
-      {/* Location & Hours */}
+      {/* Location & Hours - UPDATED FOR MULTI-LOCATION */}
       {data.locations_and_hours && (
         <Card className="p-6">
           <h2 className="text-xl font-bold text-slate-900 mb-6">Location(s)</h2>
           
-          {/* Primary Location */}
-          {data.locations_and_hours.primary_location && (
-            <div className="mb-6">
-              <h3 className="font-semibold text-slate-900 mb-3">📍 Primary Location</h3>
-              <div className="space-y-2">
-                {safeGet(data, 'locations_and_hours.primary_location.address_line1') && (
-                  <p className="text-slate-700">
-                    {safeGet(data, 'locations_and_hours.primary_location.address_line1')}
-                  </p>
-                )}
-                {safeGet(data, 'locations_and_hours.primary_location.city_state_zip') && (
-                  <p className="text-slate-700">
-                    {safeGet(data, 'locations_and_hours.primary_location.city_state_zip')}
-                  </p>
-                )}
-                {safeGet(data, 'locations_and_hours.primary_location.google_maps_embed_url') && 
-                 safeGet(data, 'locations_and_hours.primary_location.google_maps_embed_url') !== '<>' && (
-                  <Button asChild variant="outline" size="sm">
-                    <a href={safeGet(data, 'locations_and_hours.primary_location.google_maps_embed_url')} target="_blank" rel="noopener noreferrer">
-                      <MapPin className="w-4 h-4 mr-2" />
-                      Get Directions →
-                    </a>
-                  </Button>
-                )}
-              </div>
+          {/* Multiple Locations */}
+          {safeArray(data.locations_and_hours.locations).length > 0 && (
+            <div className="space-y-6 mb-6">
+              {safeArray(data.locations_and_hours.locations).map((location: any, idx: number) => (
+                <div key={idx} className={`${idx < safeArray(data.locations_and_hours.locations).length - 1 ? 'pb-6 border-b' : ''}`}>
+                  <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                    <MapPin className="w-5 h-5 text-blue-600" />
+                    {location.name || `Location ${idx + 1}`}
+                  </h3>
+                  <div className="space-y-2 ml-7">
+                    {location.address_line1 && (
+                      <p className="text-slate-700">{location.address_line1}</p>
+                    )}
+                    {location.city_state_zip && (
+                      <p className="text-slate-700">{location.city_state_zip}</p>
+                    )}
+                    {location.phone && (
+                      <p className="text-slate-700">
+                        <Phone className="w-4 h-4 inline mr-2" />
+                        {location.phone}
+                      </p>
+                    )}
+                    {location.google_maps_embed_url && 
+                     location.google_maps_embed_url !== '<>' && (
+                      <Button asChild variant="outline" size="sm" className="mt-2">
+                        <a href={location.google_maps_embed_url} target="_blank" rel="noopener noreferrer">
+                          <MapPin className="w-4 h-4 mr-2" />
+                          Get Directions →
+                        </a>
+                      </Button>
+                    )}
+                    
+                    {/* Location-specific hours if available */}
+                    {location.hours && Object.keys(location.hours).length > 0 && (
+                      <div className="mt-3 pt-3 border-t">
+                        <p className="text-sm font-medium text-slate-700 mb-2">Hours:</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {Object.entries(location.hours).map(([day, hours]: [string, any]) => (
+                            <div key={day} className="flex justify-between text-sm">
+                              <span className="font-medium capitalize text-slate-700">{day}</span>
+                              <span className="text-slate-600">{safeString(hours)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
@@ -347,8 +371,8 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
             </div>
           )}
 
-          {/* Hours */}
-          {data.locations_and_hours.opening_hours && (
+          {/* General Hours (if no location-specific hours) */}
+          {data.locations_and_hours.opening_hours && Object.keys(data.locations_and_hours.opening_hours).length > 0 && (
             <div>
               <h3 className="font-semibold text-slate-900 mb-3">Hours of Operation</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
