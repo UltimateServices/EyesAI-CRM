@@ -306,7 +306,7 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
         </Card>
       )}
 
-      {/* Location & Hours - UPDATED FOR MULTI-LOCATION */}
+      {/* Location & Hours */}
       {data.locations_and_hours && (
         <Card className="p-6">
           <h2 className="text-xl font-bold text-slate-900 mb-6">Location(s)</h2>
@@ -464,31 +464,79 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
         </Card>
       )}
 
-      {/* Photo Gallery */}
-      {safeArray(data.photo_gallery?.images).filter((img: any) => img.image_url && img.image_url !== '<>').length > 0 && (
-        <Card className="p-6">
-          <h2 className="text-xl font-bold text-slate-900 mb-6">Photo Gallery</h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {safeArray(data.photo_gallery.images)
-              .filter((img: any) => img.image_url && img.image_url !== '<>')
-              .map((image: any, idx: number) => (
-                <div key={idx} className="aspect-video bg-slate-100 rounded-lg overflow-hidden">
-                  <img 
-                    src={image.image_url} 
-                    alt={image.alt || `Photo ${idx + 1}`}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100"%3E%3Crect fill="%23f1f5f9" width="100" height="100"/%3E%3Ctext fill="%2394a3b8" font-size="14" x="50%25" y="50%25" text-anchor="middle" dominant-baseline="middle"%3ENo Image%3C/text%3E%3C/svg%3E';
-                    }}
-                  />
-                </div>
-              ))}
-          </div>
-          {data.photo_gallery.note && (
-            <p className="text-sm text-slate-500 mt-4">{data.photo_gallery.note}</p>
-          )}
-        </Card>
-      )}
+      {/* Photo Gallery - UPDATED TO SHOW BOTH INTAKE AND UPLOADED IMAGES */}
+      <Card className="p-6">
+        <h2 className="text-xl font-bold text-slate-900 mb-6">📸 Photo Gallery</h2>
+        {(() => {
+          // Combine intake images + uploaded images
+          const intakeImages = safeArray(data.photo_gallery?.images)
+            .filter((img: any) => img.image_url && img.image_url !== '<>')
+            .map((img: any) => ({
+              url: img.image_url,
+              alt: img.alt || 'Gallery image',
+              source: 'intake'
+            }));
+          
+          const uploadedImages = safeArray(company.media?.gallery)
+            .map((img: any) => ({
+              url: img.url,
+              alt: img.alt || 'Uploaded image',
+              source: 'uploaded',
+              uploadedAt: img.uploadedAt,
+              uploadedBy: img.uploadedBy
+            }));
+          
+          const allImages = [...intakeImages, ...uploadedImages];
+          
+          return allImages.length > 0 ? (
+            <>
+              <div className="mb-4 flex items-center justify-between">
+                <p className="text-sm text-slate-600">
+                  <span className="font-medium">{intakeImages.length}</span> from intake • <span className="font-medium">{uploadedImages.length}</span> uploaded
+                </p>
+                <Badge variant="outline" className="font-semibold">
+                  {allImages.length} total {allImages.length === 1 ? 'image' : 'images'}
+                </Badge>
+              </div>
+              
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {allImages.map((image: any, idx: number) => (
+                  <div key={idx} className="relative aspect-video bg-slate-100 rounded-lg overflow-hidden border-2 hover:border-blue-400 transition-colors group">
+                    <img 
+                      src={image.url} 
+                      alt={image.alt}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100"%3E%3Crect fill="%23f1f5f9" width="100" height="100"/%3E%3Ctext fill="%2394a3b8" font-size="14" x="50%25" y="50%25" text-anchor="middle" dominant-baseline="middle"%3EImage Unavailable%3C/text%3E%3C/svg%3E';
+                      }}
+                    />
+                    {/* Badge showing source */}
+                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Badge 
+                        variant={image.source === 'intake' ? 'secondary' : 'default'} 
+                        className="text-xs shadow-lg"
+                      >
+                        {image.source === 'intake' ? '📋 Intake' : '📤 Uploaded'}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              {data.photo_gallery?.note && (
+                <p className="text-sm text-slate-500 mt-4 italic">{data.photo_gallery.note}</p>
+              )}
+            </>
+          ) : (
+            <div className="text-center py-12 bg-slate-50 rounded-lg border-2 border-dashed">
+              <p className="text-slate-400 italic mb-3">No photos available yet</p>
+              <p className="text-xs text-slate-500">
+                Images from intake will appear here automatically. You can also upload images in the Media tab.
+              </p>
+            </div>
+          );
+        })()}
+      </Card>
 
       {/* Monthly Activity */}
       {(data.eyes_ai_monthly_activity?.discover || data.eyes_ai_monthly_activity?.verified) && (
