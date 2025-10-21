@@ -119,20 +119,81 @@ export function IntakeForm({ company }: IntakeFormProps) {
           return undefined;
         })(),
         
-        // FIX 6: locations_and_hours
+        // FIX 6: locations_and_hours - COMPLETE REWRITE FOR ALL FORMATS
         locations_and_hours: (() => {
           const lh = parsed.locations_and_hours;
           if (!lh) return undefined;
-          const pl = lh.primary_location || {};
-          let address_line1 = pl.address_line1 || '';
-          let city_state_zip = pl.city_state_zip || '';
-          if (pl.full_address && !address_line1) {
-            const parts = pl.full_address.split(',');
-            address_line1 = parts[0]?.trim() || '';
-            city_state_zip = parts.slice(1).join(',').trim() || '';
+          
+          // Normalize locations to always be an array
+          let locations = [];
+          
+          // Case 1: Multiple locations array
+          if (lh.locations && Array.isArray(lh.locations)) {
+            locations = lh.locations.map((loc: any) => {
+              let address_line1 = loc.address_line1 || loc.address || '';
+              let city_state_zip = loc.city_state_zip || loc.city_state || '';
+              
+              // Split full_address if present
+              if (loc.full_address && !address_line1) {
+                const parts = loc.full_address.split(',');
+                address_line1 = parts[0]?.trim() || '';
+                city_state_zip = parts.slice(1).join(',').trim() || '';
+              }
+              
+              return {
+                name: loc.name || loc.location_name || 'Location',
+                address_line1,
+                city_state_zip,
+                google_maps_embed_url: loc.coordinates || loc.google_maps_embed_url || loc.maps_url || '<>',
+                phone: loc.phone || loc.phone_number || '',
+                hours: loc.opening_hours || loc.hours || {}
+              };
+            });
           }
+          // Case 2: Single primary_location object
+          else if (lh.primary_location) {
+            const pl = lh.primary_location;
+            let address_line1 = pl.address_line1 || '';
+            let city_state_zip = pl.city_state_zip || '';
+            
+            if (pl.full_address && !address_line1) {
+              const parts = pl.full_address.split(',');
+              address_line1 = parts[0]?.trim() || '';
+              city_state_zip = parts.slice(1).join(',').trim() || '';
+            }
+            
+            locations = [{
+              name: 'Primary Location',
+              address_line1,
+              city_state_zip,
+              google_maps_embed_url: pl.coordinates || pl.google_maps_embed_url || '<>',
+              phone: pl.phone || '',
+              hours: {}
+            }];
+          }
+          // Case 3: Address directly on locations_and_hours (Major Dumpsters format)
+          else if (lh.full_address || lh.address_line1) {
+            let address_line1 = lh.address_line1 || '';
+            let city_state_zip = lh.city_state_zip || '';
+            
+            if (lh.full_address && !address_line1) {
+              const parts = lh.full_address.split(',');
+              address_line1 = parts[0]?.trim() || '';
+              city_state_zip = parts.slice(1).join(',').trim() || '';
+            }
+            
+            locations = [{
+              name: 'Primary Location',
+              address_line1,
+              city_state_zip,
+              google_maps_embed_url: lh.coordinates || lh.google_maps_embed_url || '<>',
+              phone: '',
+              hours: {}
+            }];
+          }
+          
           return {
-            primary_location: { address_line1, city_state_zip, google_maps_embed_url: pl.coordinates || pl.google_maps_embed_url || '<>' },
+            locations,  // Always an array now
             opening_hours: lh.opening_hours || {},
             hours_note: lh.hours_note || '',
             service_area_text: lh.service_area_text || ''
@@ -841,37 +902,49 @@ export function IntakeForm({ company }: IntakeFormProps) {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Address Line 1 {isMissing(formData.locations_and_hours?.primary_location?.address_line1) && <span className="text-red-600">(Missing)</span>}
+                  Address Line 1 {isMissing(formData.locations_and_hours?.locations?.[0]?.address_line1) && <span className="text-red-600">(Missing)</span>}
                 </label>
                 <input
                   type="text"
-                  value={formData.locations_and_hours?.primary_location?.address_line1 || ''}
-                  onChange={(e) => updateField('locations_and_hours.primary_location.address_line1', e.target.value)}
-                  className={getFieldClass(formData.locations_and_hours?.primary_location?.address_line1)}
+                  value={formData.locations_and_hours?.locations?.[0]?.address_line1 || ''}
+                  onChange={(e) => {
+                    const locations = formData.locations_and_hours?.locations || [{}];
+                    locations[0] = { ...locations[0], address_line1: e.target.value };
+                    updateField('locations_and_hours.locations', locations);
+                  }}
+                  className={getFieldClass(formData.locations_and_hours?.locations?.[0]?.address_line1)}
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  City, State, ZIP {isMissing(formData.locations_and_hours?.primary_location?.city_state_zip) && <span className="text-red-600">(Missing)</span>}
+                  City, State, ZIP {isMissing(formData.locations_and_hours?.locations?.[0]?.city_state_zip) && <span className="text-red-600">(Missing)</span>}
                 </label>
                 <input
                   type="text"
-                  value={formData.locations_and_hours?.primary_location?.city_state_zip || ''}
-                  onChange={(e) => updateField('locations_and_hours.primary_location.city_state_zip', e.target.value)}
-                  className={getFieldClass(formData.locations_and_hours?.primary_location?.city_state_zip)}
+                  value={formData.locations_and_hours?.locations?.[0]?.city_state_zip || ''}
+                  onChange={(e) => {
+                    const locations = formData.locations_and_hours?.locations || [{}];
+                    locations[0] = { ...locations[0], city_state_zip: e.target.value };
+                    updateField('locations_and_hours.locations', locations);
+                  }}
+                  className={getFieldClass(formData.locations_and_hours?.locations?.[0]?.city_state_zip)}
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Google Maps Embed URL {isMissing(formData.locations_and_hours?.primary_location?.google_maps_embed_url) && <span className="text-red-600">(Missing)</span>}
+                  Google Maps Embed URL {isMissing(formData.locations_and_hours?.locations?.[0]?.google_maps_embed_url) && <span className="text-red-600">(Missing)</span>}
                 </label>
                 <input
                   type="text"
-                  value={formData.locations_and_hours?.primary_location?.google_maps_embed_url || ''}
-                  onChange={(e) => updateField('locations_and_hours.primary_location.google_maps_embed_url', e.target.value)}
-                  className={getFieldClass(formData.locations_and_hours?.primary_location?.google_maps_embed_url)}
+                  value={formData.locations_and_hours?.locations?.[0]?.google_maps_embed_url || ''}
+                  onChange={(e) => {
+                    const locations = formData.locations_and_hours?.locations || [{}];
+                    locations[0] = { ...locations[0], google_maps_embed_url: e.target.value };
+                    updateField('locations_and_hours.locations', locations);
+                  }}
+                  className={getFieldClass(formData.locations_and_hours?.locations?.[0]?.google_maps_embed_url)}
                 />
               </div>
 
