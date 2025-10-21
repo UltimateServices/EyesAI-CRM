@@ -81,7 +81,7 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
           <div className="flex items-start justify-between mb-6">
             <div>
               <h1 className="text-3xl font-bold text-slate-900 mb-2">
-                {safeGet(data, 'hero.business_name') || company.name}
+                {safeGet(data, 'hero.business_name') || safeGet(data, 'hero.company_name') || company.name}
               </h1>
               {data.hero.tagline && (
                 <p className="text-lg text-slate-600">{data.hero.tagline}</p>
@@ -145,7 +145,7 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
       {data.about_and_badges && (
         <Card className="p-6">
           <h2 className="text-xl font-bold text-slate-900 mb-4">
-            About {safeGet(data, 'hero.business_name') || company.name}
+            About {safeGet(data, 'hero.business_name') || safeGet(data, 'hero.company_name') || company.name}
           </h2>
           {data.about_and_badges.ai_summary_120w && (
             <p className="text-slate-700 leading-relaxed mb-4">
@@ -210,38 +210,52 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
         </Card>
       )}
 
-      {/* Quick Reference Guide */}
-      {data.quick_reference_guide?.columns && data.quick_reference_guide?.rows && (
-        <Card className="p-6">
-          <h2 className="text-xl font-bold text-slate-900 mb-4">
-            {data.quick_reference_guide.title || 'Quick Reference Guide'}
-          </h2>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="bg-slate-100">
-                  {safeArray(data.quick_reference_guide.columns).map((col: any, idx: number) => (
-                    <th key={idx} className="border border-slate-300 px-4 py-2 text-left text-sm font-semibold">
-                      {safeString(col)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {safeArray(data.quick_reference_guide.rows).map((row: any, rowIdx: number) => (
-                  <tr key={rowIdx} className="hover:bg-slate-50">
-                    {safeArray(row).map((cell: any, cellIdx: number) => (
-                      <td key={cellIdx} className="border border-slate-300 px-4 py-2 text-sm">
-                        {safeString(cell)}
-                      </td>
+      {/* Quick Reference Guide - FIXED TO HANDLE BOTH FORMATS */}
+      {(() => {
+        // Try multiple possible structures
+        const guide = data.quick_reference_guide;
+        if (!guide) return null;
+
+        // Option 1: table.headers and table.rows
+        const headers = guide.table?.headers || guide.columns || [];
+        const rows = guide.table?.rows || guide.rows || [];
+        const title = guide.title || guide.description || 'Quick Reference Guide';
+
+        if (safeArray(headers).length === 0 || safeArray(rows).length === 0) return null;
+
+        return (
+          <Card className="p-6">
+            <h2 className="text-xl font-bold text-slate-900 mb-4">{title}</h2>
+            {guide.description && guide.description !== title && (
+              <p className="text-slate-600 mb-4">{guide.description}</p>
+            )}
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-slate-100">
+                    {safeArray(headers).map((col: any, idx: number) => (
+                      <th key={idx} className="border border-slate-300 px-4 py-2 text-left text-sm font-semibold">
+                        {safeString(col)}
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
+                </thead>
+                <tbody>
+                  {safeArray(rows).map((row: any, rowIdx: number) => (
+                    <tr key={rowIdx} className="hover:bg-slate-50">
+                      {safeArray(row).map((cell: any, cellIdx: number) => (
+                        <td key={cellIdx} className="border border-slate-300 px-4 py-2 text-sm">
+                          {safeString(cell)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        );
+      })()}
 
       {/* Pricing Information */}
       {data.pricing_information && (
@@ -249,6 +263,16 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
           <h2 className="text-xl font-bold text-slate-900 mb-3">💰 Pricing Information</h2>
           {data.pricing_information.summary_line && (
             <p className="text-slate-700 mb-4">{data.pricing_information.summary_line}</p>
+          )}
+          {safeArray(data.pricing_information.pricing_notes).length > 0 && (
+            <ul className="text-sm text-slate-700 space-y-1 mb-4">
+              {safeArray(data.pricing_information.pricing_notes).map((note: any, idx: number) => (
+                <li key={idx} className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                  <span>{safeString(note)}</span>
+                </li>
+              ))}
+            </ul>
           )}
           {safeArray(data.pricing_information.cta_buttons).length > 0 && (
             <div className="flex flex-wrap gap-3">
@@ -306,12 +330,38 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
         </Card>
       )}
 
-      {/* Location & Hours */}
+      {/* Location & Hours - FIXED TO HANDLE BOTH primary_location AND locations[] */}
       {data.locations_and_hours && (
         <Card className="p-6">
           <h2 className="text-xl font-bold text-slate-900 mb-6">Location(s)</h2>
           
-          {/* Multiple Locations */}
+          {/* FIXED: Check for primary_location first */}
+          {data.locations_and_hours.primary_location && (
+            <div className="mb-6">
+              <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                <MapPin className="w-5 h-5 text-blue-600" />
+                Primary Location
+              </h3>
+              <div className="space-y-2 ml-7">
+                {(() => {
+                  const loc = data.locations_and_hours.primary_location;
+                  const addressParts = [];
+                  
+                  if (loc.address_line_1) addressParts.push(loc.address_line_1);
+                  if (loc.address_line_2) addressParts.push(loc.address_line_2);
+                  
+                  const cityStateZip = [loc.city, loc.state, loc.zip].filter(Boolean).join(', ');
+                  if (cityStateZip) addressParts.push(cityStateZip);
+                  
+                  return addressParts.map((line, idx) => (
+                    <p key={idx} className="text-slate-700">{line}</p>
+                  ));
+                })()}
+              </div>
+            </div>
+          )}
+
+          {/* Multiple Locations Array */}
           {safeArray(data.locations_and_hours.locations).length > 0 && (
             <div className="space-y-6 mb-6">
               {safeArray(data.locations_and_hours.locations).map((location: any, idx: number) => (
@@ -464,7 +514,7 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
         </Card>
       )}
 
-      {/* Photo Gallery - FIXED TO READ FROM intake.galleryLinks */}
+      {/* Photo Gallery */}
       <Card className="p-6">
         <h2 className="text-xl font-bold text-slate-900 mb-6">📸 Photo Gallery</h2>
         {(() => {
@@ -477,7 +527,7 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
               source: 'intake'
             }));
           
-          // FIXED: Read from intake.galleryLinks (array of strings)
+          // Read from intake.galleryLinks (array of strings)
           const uploadedImages = safeArray(intake?.galleryLinks)
             .map((url: string) => ({
               url: url,
@@ -509,7 +559,6 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
                         (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100"%3E%3Crect fill="%23f1f5f9" width="100" height="100"/%3E%3Ctext fill="%2394a3b8" font-size="14" x="50%25" y="50%25" text-anchor="middle" dominant-baseline="middle"%3EImage Unavailable%3C/text%3E%3C/svg%3E';
                       }}
                     />
-                    {/* Badge showing source */}
                     <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <Badge 
                         variant={image.source === 'intake' ? 'secondary' : 'default'} 
