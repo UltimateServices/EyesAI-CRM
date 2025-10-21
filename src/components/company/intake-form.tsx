@@ -56,69 +56,121 @@ export function IntakeForm({ company }: IntakeFormProps) {
         throw new Error('Invalid ROMA-PDF format. Missing template or version.');
       }
 
-      // Transform the data to match Overview expectations
+      // Transform the data to handle ALL variations
       const transformed = {
         ...parsed,
-        // Fix pricing_information buttons (objects to strings)
+        
+        // FIX 1: Normalize hero section
+        hero: parsed.hero ? {
+          business_name: parsed.hero.business_name || parsed.hero.company_name || '',
+          tagline: parsed.hero.tagline || '',
+          hero_image_url: parsed.hero.hero_image_url || '<>',
+          badges: parsed.hero.badges || [],
+          
+          // FIX 2: Normalize quick_actions
+          quick_actions: (() => {
+            const qa = parsed.hero.quick_actions;
+            if (qa && !Array.isArray(qa) && typeof qa === 'object') return qa;
+            if (Array.isArray(qa)) {
+              const result: any = {};
+              qa.forEach((action: any) => {
+                if (action.action_type === 'call_tel') result.call_tel = action.value;
+                if (action.action_type === 'website_url') result.website_url = action.value;
+                if (action.action_type === 'email_mailto') result.email_mailto = action.value;
+                if (action.action_type === 'maps_link') result.maps_link = action.value;
+              });
+              return result;
+            }
+            return {};
+          })()
+        } : undefined,
+        
+        // FIX 3: pricing_information
         pricing_information: parsed.pricing_information ? {
           ...parsed.pricing_information,
           cta_buttons: parsed.pricing_information.cta_buttons?.map((btn: any) => 
-            typeof btn === 'string' ? btn : btn.label || btn
-          )
+            typeof btn === 'string' ? btn : (btn.label || btn)
+          ) || []
         } : undefined,
         
-        // Fix get_in_touch buttons (objects to strings)
+        // FIX 4: get_in_touch buttons
         get_in_touch: parsed.get_in_touch ? {
           ...parsed.get_in_touch,
-          buttons: parsed.get_in_touch.buttons?.map((btn: any) => 
-            typeof btn === 'string' ? btn : btn.label || btn
-          )
+          buttons: (() => {
+            const btns = parsed.get_in_touch.buttons;
+            if (!btns) return [];
+            if (Array.isArray(btns)) {
+              return btns.map((btn: any) => typeof btn === 'string' ? btn : (btn.label || btn));
+            }
+            return [];
+          })()
         } : undefined,
         
-        // Fix quick_reference_guide structure
-        quick_reference_guide: parsed.quick_reference_guide?.table_5x5 ? {
-          columns: parsed.quick_reference_guide.table_5x5.headers,
-          rows: parsed.quick_reference_guide.table_5x5.rows
-        } : parsed.quick_reference_guide,
+        // FIX 5: quick_reference_guide
+        quick_reference_guide: (() => {
+          const qrg = parsed.quick_reference_guide;
+          if (!qrg) return undefined;
+          if (qrg.table_5x5) {
+            return { columns: qrg.table_5x5.headers || [], rows: qrg.table_5x5.rows || [] };
+          }
+          if (qrg.columns || qrg.rows) {
+            return { columns: qrg.columns || [], rows: qrg.rows || [] };
+          }
+          return undefined;
+        })(),
         
-        // Fix locations_and_hours structure
-        locations_and_hours: parsed.locations_and_hours ? {
-          primary_location: {
-            address_line1: parsed.locations_and_hours.primary_location?.full_address?.split(',')[0]?.trim() || '',
-            city_state_zip: parsed.locations_and_hours.primary_location?.full_address?.split(',').slice(1).join(',').trim() || '',
-            google_maps_embed_url: parsed.locations_and_hours.primary_location?.coordinates || '<>'
-          },
-          opening_hours: parsed.locations_and_hours.opening_hours,
-          hours_note: parsed.locations_and_hours.hours_note,
-          service_area_text: parsed.locations_and_hours.service_area_text
-        } : undefined,
+        // FIX 6: locations_and_hours
+        locations_and_hours: (() => {
+          const lh = parsed.locations_and_hours;
+          if (!lh) return undefined;
+          const pl = lh.primary_location || {};
+          let address_line1 = pl.address_line1 || '';
+          let city_state_zip = pl.city_state_zip || '';
+          if (pl.full_address && !address_line1) {
+            const parts = pl.full_address.split(',');
+            address_line1 = parts[0]?.trim() || '';
+            city_state_zip = parts.slice(1).join(',').trim() || '';
+          }
+          return {
+            primary_location: { address_line1, city_state_zip, google_maps_embed_url: pl.coordinates || pl.google_maps_embed_url || '<>' },
+            opening_hours: lh.opening_hours || {},
+            hours_note: lh.hours_note || '',
+            service_area_text: lh.service_area_text || ''
+          };
+        })(),
         
-        // Fix FAQs structure (q/a to question/answer)
-        faqs: parsed.faqs ? {
-          all_questions: parsed.faqs.all_questions ? 
-            Object.fromEntries(
-              Object.entries(parsed.faqs.all_questions).map(([category, questions]: [string, any]) => [
-                category,
-                questions.map((faq: any) => ({
-                  question: faq.q || faq.question,
-                  answer: faq.a || faq.answer
-                }))
-              ])
-            ) : undefined,
-          whats_new: parsed.faqs.whats_new ? {
-            month_label: parsed.faqs.whats_new.month_label,
-            questions: (parsed.faqs.whats_new.monthly_updates || parsed.faqs.whats_new.questions || []).map((item: any) => ({
-              question: item.q || item.question,
-              answer: item.a || item.answer
-            }))
-          } : undefined
-        } : undefined
+        // FIX 7: FAQs
+        faqs: (() => {
+          const faqs = parsed.faqs;
+          if (!faqs) return undefined;
+          return {
+            all_questions: faqs.all_questions ? 
+              Object.fromEntries(
+                Object.entries(faqs.all_questions).map(([category, questions]: [string, any]) => [
+                  category,
+                  (questions || []).map((faq: any) => ({
+                    question: faq.q || faq.question || '',
+                    answer: faq.a || faq.answer || ''
+                  }))
+                ])
+              ) : undefined,
+            whats_new: faqs.whats_new ? {
+              month_label: faqs.whats_new.month_label || '',
+              questions: (faqs.whats_new.updates || faqs.whats_new.monthly_updates || faqs.whats_new.questions || []).map((item: any) => ({
+                question: item.q || item.question || '',
+                answer: item.a || item.answer || ''
+              }))
+            } : undefined
+          };
+        })()
       };
 
+      console.log('Transformed data:', transformed);
       setFormData(transformed);
       setShowPasteModal(false);
       setPasteText('');
     } catch (error: any) {
+      console.error('Import error:', error);
       setParseError('Error: ' + error.message);
     }
   };
