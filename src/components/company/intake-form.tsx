@@ -33,7 +33,6 @@ export function IntakeForm({ company }: IntakeFormProps) {
   
   const [formData, setFormData] = useState<any>(existingIntake?.romaData || null);
 
-  // Check if field is missing
   const isMissing = (value: any): boolean => {
     if (value === null || value === undefined || value === '' || value === '<>') return true;
     if (Array.isArray(value) && value.length === 0) return true;
@@ -56,28 +55,31 @@ export function IntakeForm({ company }: IntakeFormProps) {
         throw new Error('Invalid ROMA-PDF format. Missing template or version.');
       }
 
-      // Transform the data to handle ALL variations
       const transformed = {
         ...parsed,
         
-        // FIX 1: Normalize hero section
         hero: parsed.hero ? {
-          business_name: parsed.hero.business_name || parsed.hero.company_name || '',
-          tagline: parsed.hero.tagline || parsed.hero.primary_tagline || '',
-          hero_image_url: parsed.hero.hero_image_url || '<>',
-          badges: parsed.hero.badges || [],
+          business_name: parsed.hero.business_name || parsed.hero.company_name || parsed.hero.name || '',
+          tagline: parsed.hero.tagline || parsed.hero.primary_tagline || parsed.hero.slogan || '',
+          hero_image_url: parsed.hero.hero_image_url || parsed.hero.logo_url || parsed.hero.image || '<>',
+          badges: Array.isArray(parsed.hero.badges) ? parsed.hero.badges : (parsed.hero.badges ? [parsed.hero.badges] : []),
           
-          // FIX 2: Normalize quick_actions
           quick_actions: (() => {
             const qa = parsed.hero.quick_actions;
-            if (qa && !Array.isArray(qa) && typeof qa === 'object') return qa;
+            if (!qa) return {};
+            
+            if (!Array.isArray(qa) && typeof qa === 'object') return qa;
+            
             if (Array.isArray(qa)) {
               const result: any = {};
               qa.forEach((action: any) => {
-                if (action.action_type === 'call_tel') result.call_tel = action.value;
-                if (action.action_type === 'website_url') result.website_url = action.value;
-                if (action.action_type === 'email_mailto') result.email_mailto = action.value;
-                if (action.action_type === 'maps_link') result.maps_link = action.value;
+                const type = action.action_type || action.action || action.type || action.label?.toLowerCase();
+                const val = action.value || action.url || action.link || action.call_tel || action.website_url || action.email_mailto || action.maps_link;
+                
+                if (type?.includes('call') || type?.includes('tel') || type?.includes('phone')) result.call_tel = val;
+                if (type?.includes('website') || type?.includes('url')) result.website_url = val;
+                if (type?.includes('email') || type?.includes('mailto')) result.email_mailto = val;
+                if (type?.includes('map') || type?.includes('direction')) result.maps_link = val;
               });
               return result;
             }
@@ -85,195 +87,256 @@ export function IntakeForm({ company }: IntakeFormProps) {
           })()
         } : undefined,
         
-        // FIX 3: pricing_information
         pricing_information: parsed.pricing_information ? {
           ...parsed.pricing_information,
-          cta_buttons: parsed.pricing_information.cta_buttons?.map((btn: any) => 
-            typeof btn === 'string' ? btn : (btn.label || btn)
-          ) || []
-        } : undefined,
-        
-        // FIX 4: get_in_touch buttons
-        get_in_touch: parsed.get_in_touch ? {
-          ...parsed.get_in_touch,
-          buttons: (() => {
-            const btns = parsed.get_in_touch.buttons;
+          cta_buttons: (() => {
+            const btns = parsed.pricing_information.cta_buttons || parsed.pricing_information.buttons;
             if (!btns) return [];
-            if (Array.isArray(btns)) {
-              return btns.map((btn: any) => typeof btn === 'string' ? btn : (btn.label || btn));
-            }
-            return [];
+            if (!Array.isArray(btns)) return [];
+            return btns.map((btn: any) => {
+              if (typeof btn === 'string') return btn;
+              return btn.label || btn.text || btn.title || String(btn);
+            });
           })()
         } : undefined,
         
-        // FIX 5: quick_reference_guide
+        get_in_touch: parsed.get_in_touch ? {
+          ...parsed.get_in_touch,
+          buttons: (() => {
+            const btns = parsed.get_in_touch.buttons || parsed.get_in_touch.cta_buttons;
+            if (!btns) return [];
+            if (!Array.isArray(btns)) return [];
+            return btns.map((btn: any) => {
+              if (typeof btn === 'string') return btn;
+              return btn.label || btn.text || btn.title || String(btn);
+            });
+          })()
+        } : undefined,
+        
         quick_reference_guide: (() => {
           const qrg = parsed.quick_reference_guide;
           if (!qrg) return undefined;
           if (qrg.table_5x5) {
-            return { columns: qrg.table_5x5.headers || [], rows: qrg.table_5x5.rows || [] };
+            return { 
+              columns: qrg.table_5x5.headers || qrg.table_5x5.columns || [], 
+              rows: qrg.table_5x5.rows || qrg.table_5x5.data || [] 
+            };
           }
-          if (qrg.columns || qrg.rows) {
-            return { columns: qrg.columns || [], rows: qrg.rows || [] };
-          }
-          return undefined;
+          return { 
+            columns: qrg.columns || qrg.headers || [], 
+            rows: qrg.rows || qrg.data || [] 
+          };
         })(),
         
-        // FIX 6: locations_and_hours - HANDLE ALL FORMATS (STRING, OBJECT, ARRAY)
         locations_and_hours: (() => {
           const lh = parsed.locations_and_hours;
           if (!lh) return undefined;
           
-          // Normalize locations to always be an array
           let locations = [];
           
-          // Case 1: Multiple locations array
           if (lh.locations && Array.isArray(lh.locations)) {
             locations = lh.locations.map((loc: any) => {
-              let address_line1 = loc.address_line1 || loc.address || '';
+              let address_line1 = loc.address_line1 || loc.address || loc.street || '';
               let city_state_zip = loc.city_state_zip || loc.city_state || '';
               
-              // Handle full_address as STRING
-              if (typeof loc.full_address === 'string' && !address_line1) {
-                const parts = loc.full_address.split(',');
-                address_line1 = parts[0]?.trim() || '';
-                city_state_zip = parts.slice(1).join(',').trim() || '';
-              }
-              // Handle full_address as OBJECT
-              else if (loc.full_address && typeof loc.full_address === 'object') {
-                address_line1 = loc.full_address.street || '';
-                city_state_zip = `${loc.full_address.city || ''}, ${loc.full_address.state || ''} ${loc.full_address.zip || ''}`.trim();
+              const fullAddr = loc.full_address || loc.address_full;
+              if (fullAddr && !address_line1) {
+                if (typeof fullAddr === 'string') {
+                  const parts = fullAddr.split(',');
+                  address_line1 = parts[0]?.trim() || '';
+                  city_state_zip = parts.slice(1).join(',').trim() || '';
+                } else if (typeof fullAddr === 'object') {
+                  address_line1 = fullAddr.street || fullAddr.address_line1 || '';
+                  city_state_zip = `${fullAddr.city || ''}, ${fullAddr.state || ''} ${fullAddr.zip || fullAddr.zipcode || ''}`.trim();
+                }
               }
               
               return {
-                name: loc.name || loc.location_name || 'Location',
+                name: loc.name || loc.location_name || loc.title || 'Location',
                 address_line1,
                 city_state_zip,
-                google_maps_embed_url: loc.coordinates || loc.google_maps_embed_url || loc.maps_url || '<>',
-                phone: loc.phone || loc.phone_number || '',
+                google_maps_embed_url: loc.coordinates || loc.google_maps_embed_url || loc.maps_url || loc.map_url || '<>',
+                phone: loc.phone || loc.phone_number || loc.tel || '',
                 hours: loc.opening_hours || loc.hours || {}
               };
             });
           }
-          // Case 2: Single primary_location object
           else if (lh.primary_location) {
             const pl = lh.primary_location;
-            let address_line1 = pl.address_line1 || '';
-            let city_state_zip = pl.city_state_zip || '';
+            let address_line1 = pl.address_line1 || pl.address || pl.street || '';
+            let city_state_zip = pl.city_state_zip || pl.city_state || '';
             
-            // Handle full_address as STRING
-            if (typeof pl.full_address === 'string' && !address_line1) {
-              const parts = pl.full_address.split(',');
-              address_line1 = parts[0]?.trim() || '';
-              city_state_zip = parts.slice(1).join(',').trim() || '';
-            }
-            // Handle full_address as OBJECT (H Academy format)
-            else if (pl.full_address && typeof pl.full_address === 'object') {
-              address_line1 = pl.full_address.street || '';
-              city_state_zip = `${pl.full_address.city || ''}, ${pl.full_address.state || ''} ${pl.full_address.zip || ''}`.trim();
+            const fullAddr = pl.full_address || pl.address_full;
+            if (fullAddr) {
+              if (typeof fullAddr === 'string' && !address_line1) {
+                const parts = fullAddr.split(',');
+                address_line1 = parts[0]?.trim() || '';
+                city_state_zip = parts.slice(1).join(',').trim() || '';
+              } else if (typeof fullAddr === 'object') {
+                address_line1 = fullAddr.street || fullAddr.address_line1 || '';
+                city_state_zip = `${fullAddr.city || ''}, ${fullAddr.state || ''} ${fullAddr.zip || fullAddr.zipcode || ''}`.trim();
+              }
             }
             
             locations = [{
-              name: 'Primary Location',
+              name: pl.location_name || 'Primary Location',
               address_line1,
               city_state_zip,
               google_maps_embed_url: pl.coordinates || pl.google_maps_embed_url || '<>',
-              phone: pl.phone || '',
+              phone: pl.phone || pl.phone_number || '',
               hours: {}
             }];
           }
-          // Case 3: Address directly on locations_and_hours (Major Dumpsters format)
-          else if (lh.full_address || lh.address_line1) {
-            let address_line1 = lh.address_line1 || '';
-            let city_state_zip = lh.city_state_zip || '';
+          else {
+            let address_line1 = lh.address_line1 || lh.address || lh.street || '';
+            let city_state_zip = lh.city_state_zip || lh.city_state || '';
             
-            // Handle full_address as STRING
-            if (typeof lh.full_address === 'string' && !address_line1) {
-              const parts = lh.full_address.split(',');
-              address_line1 = parts[0]?.trim() || '';
-              city_state_zip = parts.slice(1).join(',').trim() || '';
-            }
-            // Handle full_address as OBJECT
-            else if (lh.full_address && typeof lh.full_address === 'object') {
-              address_line1 = lh.full_address.street || '';
-              city_state_zip = `${lh.full_address.city || ''}, ${lh.full_address.state || ''} ${lh.full_address.zip || ''}`.trim();
+            const fullAddr = lh.full_address || lh.address_full;
+            if (fullAddr) {
+              if (typeof fullAddr === 'string' && !address_line1) {
+                const parts = fullAddr.split(',');
+                address_line1 = parts[0]?.trim() || '';
+                city_state_zip = parts.slice(1).join(',').trim() || '';
+              } else if (typeof fullAddr === 'object') {
+                address_line1 = fullAddr.street || fullAddr.address_line1 || '';
+                city_state_zip = `${fullAddr.city || ''}, ${fullAddr.state || ''} ${fullAddr.zip || fullAddr.zipcode || ''}`.trim();
+              }
             }
             
-            locations = [{
-              name: 'Primary Location',
-              address_line1,
-              city_state_zip,
-              google_maps_embed_url: lh.coordinates || lh.google_maps_embed_url || '<>',
-              phone: '',
-              hours: {}
-            }];
+            if (address_line1 || city_state_zip) {
+              locations = [{
+                name: 'Primary Location',
+                address_line1,
+                city_state_zip,
+                google_maps_embed_url: lh.coordinates || lh.google_maps_embed_url || lh.maps_url || '<>',
+                phone: lh.phone || lh.phone_number || lh.phone_display || '',
+                hours: {}
+              }];
+            }
           }
           
-          // NORMALIZE opening_hours - convert array to object
-          let opening_hours = lh.opening_hours || {};
-          if (Array.isArray(lh.opening_hours)) {
-            opening_hours = {};
-            lh.opening_hours.forEach((day: any) => {
-              const dayName = day.day?.toLowerCase() || '';
+          let opening_hours = lh.opening_hours || lh.hours || {};
+          if (Array.isArray(opening_hours)) {
+            const hoursObj: any = {};
+            opening_hours.forEach((day: any) => {
+              const dayName = (day.day || day.dayOfWeek || day.name)?.toLowerCase() || '';
               if (dayName) {
-                if (day.open === 'Closed' || day.close === 'Closed') {
-                  opening_hours[dayName] = 'Closed';
-                } else {
-                  opening_hours[dayName] = `${day.open} - ${day.close}`;
+                const openTime = day.open || day.opening || day.opens || day.start;
+                const closeTime = day.close || day.closing || day.closes || day.end;
+                if (openTime === 'Closed' || closeTime === 'Closed' || day.closed) {
+                  hoursObj[dayName] = 'Closed';
+                } else if (openTime && closeTime) {
+                  hoursObj[dayName] = `${openTime} - ${closeTime}`;
                 }
               }
             });
+            opening_hours = hoursObj;
           }
           
           return {
-            locations,  // Always an array now
-            opening_hours,  // Always an object now
-            hours_note: lh.hours_note || '',
-            service_area_text: lh.service_area_text || ''
+            locations,
+            opening_hours,
+            hours_note: lh.hours_note || lh.note || '',
+            service_area_text: lh.service_area_text || lh.service_area || ''
           };
         })(),
         
-        // FIX 7: FAQs
         faqs: (() => {
           const faqs = parsed.faqs;
           if (!faqs) return undefined;
+          
           return {
-            all_questions: faqs.all_questions ? 
-              Object.fromEntries(
-                Object.entries(faqs.all_questions).map(([category, questions]: [string, any]) => [
-                  category,
-                  (questions || []).map((faq: any) => ({
-                    question: faq.q || faq.question || '',
-                    answer: faq.a || faq.answer || ''
-                  }))
-                ])
-              ) : undefined,
+            all_questions: (() => {
+              const allQ = faqs.all_questions;
+              if (!allQ) return undefined;
+              
+              if (Array.isArray(allQ)) {
+                const result: any = {};
+                allQ.forEach((cat: any) => {
+                  const categoryName = cat.category || cat.title || 'General';
+                  const questions = cat.qa_list || cat.questions || cat.items || [];
+                  result[categoryName] = questions.map((faq: any) => ({
+                    question: faq.q || faq.question || faq.title || '',
+                    answer: faq.a || faq.answer || faq.response || ''
+                  }));
+                });
+                return result;
+              }
+              
+              if (typeof allQ === 'object') {
+                return Object.fromEntries(
+                  Object.entries(allQ).map(([category, categoryData]: [string, any]) => [
+                    category,
+                    (Array.isArray(categoryData) 
+                      ? categoryData 
+                      : (categoryData?.questions || categoryData?.items || categoryData?.qa_list || [])
+                    ).map((faq: any) => ({
+                      question: faq.q || faq.question || faq.title || '',
+                      answer: faq.a || faq.answer || faq.response || ''
+                    }))
+                  ])
+                );
+              }
+              
+              return undefined;
+            })(),
+            
             whats_new: faqs.whats_new ? {
-              month_label: faqs.whats_new.month_label || '',
-              questions: (faqs.whats_new.updates || faqs.whats_new.monthly_updates || faqs.whats_new.questions || []).map((item: any) => ({
-                question: item.q || item.question || '',
-                answer: item.a || item.answer || ''
+              month_label: faqs.whats_new.month_label || faqs.whats_new.label || '',
+              questions: (
+                faqs.whats_new.updates || 
+                faqs.whats_new.monthly_updates || 
+                faqs.whats_new.questions || 
+                faqs.whats_new.items || 
+                faqs.whats_new.qa_list || 
+                []
+              ).map((item: any) => ({
+                question: item.q || item.question || item.title || '',
+                answer: item.a || item.answer || item.response || ''
               }))
             } : undefined
           };
         })(),
         
-        // FIX 8: what_to_expect - handle both array and object with cards
+        services: (() => {
+          const svc = parsed.services;
+          if (!svc) return undefined;
+          const serviceList = Array.isArray(svc) ? svc : (svc.services || svc.items || []);
+          return serviceList;
+        })(),
+        
         what_to_expect: (() => {
           const wte = parsed.what_to_expect;
           if (!wte) return undefined;
           if (Array.isArray(wte)) return wte;
           if (wte.cards && Array.isArray(wte.cards)) return wte.cards;
+          if (wte.items && Array.isArray(wte.items)) return wte.items;
           return undefined;
+        })(),
+        
+        featured_reviews: (() => {
+          const rev = parsed.featured_reviews;
+          if (!rev) return undefined;
+          if (rev.items) return { items: rev.items };
+          if (rev.reviews) return { items: rev.reviews };
+          return rev;
+        })(),
+        
+        photo_gallery: (() => {
+          const gallery = parsed.photo_gallery;
+          if (!gallery) return undefined;
+          if (gallery.images) return gallery;
+          if (gallery.photos) return { ...gallery, images: gallery.photos };
+          return gallery;
         })()
       };
 
-      console.log('Transformed data:', transformed);
+      console.log('✅ Transformed data:', transformed);
       setFormData(transformed);
       setShowPasteModal(false);
       setPasteText('');
     } catch (error: any) {
-      console.error('Import error:', error);
+      console.error('❌ Import error:', error);
       setParseError('Error: ' + error.message);
     }
   };
@@ -374,7 +437,6 @@ export function IntakeForm({ company }: IntakeFormProps) {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <Card className="p-6">
         <div className="flex items-center justify-between">
           <div>
@@ -418,7 +480,6 @@ export function IntakeForm({ company }: IntakeFormProps) {
         )}
       </Card>
 
-      {/* Paste Modal */}
       {showPasteModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <Card className="w-full max-w-4xl max-h-[90vh] overflow-auto">
@@ -485,10 +546,8 @@ export function IntakeForm({ company }: IntakeFormProps) {
         </div>
       )}
 
-      {/* ALL FORM FIELDS */}
       {formData && (
         <div className="space-y-6">
-          {/* 1. Category & AI Overview */}
           <Card className="p-6">
             <h3 className="text-lg font-semibold mb-4">1. Category & AI Overview</h3>
             <div className="space-y-4">
@@ -520,7 +579,6 @@ export function IntakeForm({ company }: IntakeFormProps) {
             </div>
           </Card>
 
-          {/* 2. Hero Section */}
           <Card className="p-6">
             <h3 className="text-lg font-semibold mb-4">2. Hero Section</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -627,7 +685,6 @@ export function IntakeForm({ company }: IntakeFormProps) {
             </div>
           </Card>
 
-          {/* 3. About & Badges */}
           <Card className="p-6">
             <h3 className="text-lg font-semibold mb-4">3. About & Badges</h3>
             <div className="space-y-4">
@@ -659,7 +716,6 @@ export function IntakeForm({ company }: IntakeFormProps) {
             </div>
           </Card>
 
-          {/* 4. Services */}
           <Card className="p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">4. Services (4-6 services)</h3>
@@ -761,7 +817,6 @@ export function IntakeForm({ company }: IntakeFormProps) {
             </div>
           </Card>
 
-          {/* 5. Quick Reference Guide */}
           <Card className="p-6">
             <h3 className="text-lg font-semibold mb-4">5. Quick Reference Guide (5x5 Table)</h3>
             <div className="space-y-3">
@@ -797,7 +852,6 @@ export function IntakeForm({ company }: IntakeFormProps) {
             </div>
           </Card>
 
-          {/* 6. Pricing Information */}
           <Card className="p-6">
             <h3 className="text-lg font-semibold mb-4">6. Pricing Information</h3>
             <div className="space-y-4">
@@ -829,7 +883,6 @@ export function IntakeForm({ company }: IntakeFormProps) {
             </div>
           </Card>
 
-          {/* 7. What to Expect */}
           <Card className="p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">7. What to Expect (6 cards)</h3>
@@ -940,7 +993,6 @@ export function IntakeForm({ company }: IntakeFormProps) {
             </div>
           </Card>
 
-          {/* 8. Location & Hours */}
           <Card className="p-6">
             <h3 className="text-lg font-semibold mb-4">8. Location & Hours</h3>
             <div className="space-y-4">
@@ -1035,7 +1087,6 @@ export function IntakeForm({ company }: IntakeFormProps) {
             </div>
           </Card>
 
-          {/* 9. FAQs */}
           <Card className="p-6">
             <h3 className="text-lg font-semibold mb-4">9. FAQs</h3>
             <div className="space-y-4">
@@ -1075,7 +1126,6 @@ export function IntakeForm({ company }: IntakeFormProps) {
             </div>
           </Card>
 
-          {/* 10. Reviews */}
           <Card className="p-6">
             <h3 className="text-lg font-semibold mb-4">10. Featured Reviews (3 reviews)</h3>
             <div className="space-y-4">
@@ -1165,7 +1215,6 @@ export function IntakeForm({ company }: IntakeFormProps) {
             </div>
           </Card>
 
-          {/* 11. Photo Gallery */}
           <Card className="p-6">
             <h3 className="text-lg font-semibold mb-4">11. Photo Gallery (6 images)</h3>
             <div className="space-y-4">
@@ -1222,7 +1271,6 @@ export function IntakeForm({ company }: IntakeFormProps) {
             </div>
           </Card>
 
-          {/* 12. Monthly Activity */}
           <Card className="p-6">
             <h3 className="text-lg font-semibold mb-4">12. Monthly Activity</h3>
             <div className="space-y-4">
@@ -1264,7 +1312,6 @@ export function IntakeForm({ company }: IntakeFormProps) {
             </div>
           </Card>
 
-          {/* 13. Get in Touch */}
           <Card className="p-6">
             <h3 className="text-lg font-semibold mb-4">13. Get in Touch</h3>
             <div className="space-y-4">
@@ -1318,7 +1365,6 @@ export function IntakeForm({ company }: IntakeFormProps) {
             </div>
           </Card>
 
-          {/* 14. SEO & Schema */}
           <Card className="p-6">
             <h3 className="text-lg font-semibold mb-4">14. SEO & Schema</h3>
             <div className="space-y-4">
@@ -1382,7 +1428,6 @@ export function IntakeForm({ company }: IntakeFormProps) {
             </div>
           </Card>
 
-          {/* 15. Footer */}
           <Card className="p-6">
             <h3 className="text-lg font-semibold mb-4">15. Footer</h3>
             <div className="grid grid-cols-2 gap-4">
@@ -1487,7 +1532,6 @@ export function IntakeForm({ company }: IntakeFormProps) {
             </div>
           </Card>
 
-          {/* 16. Audit */}
           <Card className="p-6">
             <h3 className="text-lg font-semibold mb-4">16. Audit</h3>
             <div className="space-y-4">
@@ -1541,7 +1585,6 @@ export function IntakeForm({ company }: IntakeFormProps) {
             </div>
           </Card>
 
-          {/* Success Message */}
           {formData.audit?.resume_token === 'ROMA-OK' && (
             <Card className="p-4 bg-green-50 border-green-200">
               <p className="text-green-800 font-medium">
