@@ -60,6 +60,196 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
     return String(value);
   };
 
+  // Helper: Render badge (handles BOTH string and object formats)
+  const renderBadge = (badge: any): string => {
+    // If it's already a string, return it
+    if (typeof badge === 'string') {
+      return badge;
+    }
+    
+    // If it's an object with icon and text properties
+    if (badge && typeof badge === 'object') {
+      const icon = badge.icon || '';
+      const text = badge.text || '';
+      
+      // Combine icon and text with a space
+      if (icon && text) {
+        return `${icon} ${text}`;
+      }
+      
+      // Return whichever exists
+      if (text) return text;
+      if (icon) return icon;
+      
+      // Fallback to stringifying the object
+      return safeString(badge);
+    }
+    
+    // Last resort fallback
+    return safeString(badge);
+  };
+
+  // Helper: Get location address lines (handles ALL formats)
+  const getLocationAddress = (): string[] => {
+    const locHours = data.locations_and_hours;
+    if (!locHours) return [];
+    
+    const lines: string[] = [];
+    const primaryLoc = locHours.primary_location;
+    
+    // Try Pattern 1: primary_location.full_address (Major Dumpsters)
+    if (primaryLoc && primaryLoc.full_address) {
+      return [primaryLoc.full_address];
+    }
+    
+    // Try Pattern 2: primary_location.address_line_1 (Car Shipping Kings - underscore)
+    if (primaryLoc && primaryLoc.address_line_1) {
+      if (primaryLoc.address_line_1) lines.push(primaryLoc.address_line_1);
+      if (primaryLoc.address_line_2) lines.push(primaryLoc.address_line_2);
+      
+      const cityParts = [primaryLoc.city, primaryLoc.state, primaryLoc.zip].filter(Boolean);
+      if (cityParts.length > 0) {
+        lines.push(cityParts.join(', '));
+      }
+      
+      return lines;
+    }
+    
+    // Try Pattern 3: primary_location.address_line1 (Idaho Supreme - NO underscore)
+    if (primaryLoc && primaryLoc.address_line1) {
+      if (primaryLoc.address_line1) lines.push(primaryLoc.address_line1);
+      if (primaryLoc.address_line2) lines.push(primaryLoc.address_line2);
+      
+      const cityParts = [primaryLoc.city, primaryLoc.state, primaryLoc.zip].filter(Boolean);
+      if (cityParts.length > 0) {
+        lines.push(cityParts.join(', '));
+      }
+      
+      return lines;
+    }
+    
+    // Try Pattern 4: Direct full_address at root level (Captain Mike's, ZoRoCo)
+    if (locHours.full_address) {
+      return [locHours.full_address];
+    }
+    
+    // Try Pattern 5: city_state field (Captain Mike's)
+    if (locHours.city_state) {
+      return [locHours.city_state];
+    }
+    
+    // Try Pattern 6: Fallback to individual city + state fields
+    const city = (primaryLoc && primaryLoc.city) || locHours.city || '';
+    const state = (primaryLoc && primaryLoc.state) || locHours.state || '';
+    
+    if (city && state) {
+      return [`${city}, ${state}`];
+    }
+    
+    if (city) return [city];
+    if (state) return [state];
+    
+    // No location found
+    return [];
+  };
+
+  // Helper: Get table data (handles BOTH formats explicitly)
+  const getTableData = (): { title: string; description: string | null; headers: any[]; rows: any[] } | null => {
+    const guide = data.quick_reference_guide;
+    
+    // No guide section at all
+    if (!guide) {
+      return null;
+    }
+    
+    let headers: any[] = [];
+    let rows: any[] = [];
+    
+    // Try Format 1: table.headers + table.rows (Car Shipping)
+    if (guide.table) {
+      if (guide.table.headers) {
+        headers = safeArray(guide.table.headers);
+      }
+      if (guide.table.rows) {
+        rows = safeArray(guide.table.rows);
+      }
+    }
+    
+    // Try Format 2: Direct columns + rows (Major Dumpsters)
+    if (headers.length === 0 && guide.columns) {
+      headers = safeArray(guide.columns);
+    }
+    if (rows.length === 0 && guide.rows) {
+      rows = safeArray(guide.rows);
+    }
+    
+    // If we still don't have data, return null
+    if (headers.length === 0 || rows.length === 0) {
+      return null;
+    }
+    
+    // Build title and description
+    const title = guide.title || guide.description || guide.table_title || 'Quick Reference Guide';
+    const description = (guide.description && guide.description !== guide.title) ? guide.description : null;
+    
+    return {
+      title,
+      description,
+      headers,
+      rows
+    };
+  };
+
+  // Helper: Render hours (handles BOTH object and array formats)
+  const renderHours = () => {
+    const hours = data.locations_and_hours?.opening_hours;
+    
+    if (!hours) {
+      return null;
+    }
+    
+    // Format 1: Array of {day, hours} objects (ZoRoCo)
+    if (Array.isArray(hours)) {
+      if (hours.length === 0) return null;
+      
+      return (
+        <>
+          {hours.map((item: any, idx: number) => (
+            <div key={idx} className="flex justify-between text-sm">
+              <span className="font-medium text-slate-700">{item.day}</span>
+              <span className="text-slate-600">{item.hours}</span>
+            </div>
+          ))}
+        </>
+      );
+    }
+    
+    // Format 2: Object with day keys (Major, Car Shipping)
+    if (typeof hours === 'object' && hours !== null) {
+      const entries = Object.entries(hours);
+      
+      if (entries.length === 0) return null;
+      
+      return (
+        <>
+          {entries.map(([day, hoursStr]: [string, any]) => (
+            <div key={day} className="flex justify-between text-sm">
+              <span className="font-medium capitalize text-slate-700">{day}</span>
+              <span className="text-slate-600">{safeString(hoursStr)}</span>
+            </div>
+          ))}
+        </>
+      );
+    }
+    
+    return null;
+  };
+
+  // Pre-compute values
+  const tableData = getTableData();
+  const locationLines = getLocationAddress();
+  const hoursContent = renderHours();
+
   return (
     <div className="space-y-6">
       {/* AI Overview */}
@@ -89,52 +279,76 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
             </div>
           </div>
 
-          {/* Badges */}
+          {/* Badges - FIXED to handle both formats */}
           {safeArray(data.hero.badges).length > 0 && (
             <div className="flex flex-wrap gap-2 mb-6">
               {safeArray(data.hero.badges).map((badge: any, idx: number) => (
                 <Badge key={idx} variant="secondary">
                   <CheckCircle2 className="w-3 h-3 mr-1" />
-                  {safeString(badge)}
+                  {renderBadge(badge)}
                 </Badge>
               ))}
             </div>
           )}
 
-          {/* Quick Actions */}
+          {/* Quick Actions - Handles both OBJECT and ARRAY formats */}
           {data.hero.quick_actions && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-              {safeGet(data, 'hero.quick_actions.call_tel') && (
-                <Button asChild variant="outline" className="w-full">
-                  <a href={safeGet(data, 'hero.quick_actions.call_tel')}>
-                    <Phone className="w-4 h-4 mr-2" />
-                    Call Now
-                  </a>
-                </Button>
-              )}
-              {safeGet(data, 'hero.quick_actions.website_url') && (
-                <Button asChild variant="outline" className="w-full">
-                  <a href={safeGet(data, 'hero.quick_actions.website_url')} target="_blank" rel="noopener noreferrer">
-                    <Globe className="w-4 h-4 mr-2" />
-                    Visit Website
-                  </a>
-                </Button>
-              )}
-              {safeGet(data, 'hero.quick_actions.email_mailto') && (
-                <Button asChild variant="outline" className="w-full">
-                  <a href={safeGet(data, 'hero.quick_actions.email_mailto')}>
-                    <Mail className="w-4 h-4 mr-2" />
-                    Email
-                  </a>
-                </Button>
-              )}
-              {safeGet(data, 'hero.quick_actions.maps_link') && (
-                <Button asChild variant="outline" className="w-full">
-                  <a href={safeGet(data, 'hero.quick_actions.maps_link')} target="_blank" rel="noopener noreferrer">
-                    <MapPin className="w-4 h-4 mr-2" />
-                    Directions
-                  </a>
-                </Button>
+              {Array.isArray(data.hero.quick_actions) ? (
+                // Array format (Captain Mike's, ZoRoCo)
+                data.hero.quick_actions.map((action: any, idx: number) => {
+                  const href = action.value || action.call_tel || action.website_url || action.email_mailto || action.maps_link;
+                  const isExternal = href?.includes('http') || href?.includes('maps.google');
+                  const icon = action.icon || action.action_type;
+                  
+                  return (
+                    <Button key={idx} asChild variant="outline" className="w-full">
+                      <a href={href} target={isExternal ? "_blank" : undefined} rel={isExternal ? "noopener noreferrer" : undefined}>
+                        {icon?.includes('phone') || action.label?.toLowerCase().includes('call') ? <Phone className="w-4 h-4 mr-2" /> :
+                         icon?.includes('globe') || action.label?.toLowerCase().includes('website') ? <Globe className="w-4 h-4 mr-2" /> :
+                         icon?.includes('mail') || action.label?.toLowerCase().includes('email') ? <Mail className="w-4 h-4 mr-2" /> :
+                         icon?.includes('map') || action.label?.toLowerCase().includes('direction') ? <MapPin className="w-4 h-4 mr-2" /> : null}
+                        {action.label || 'Contact'}
+                      </a>
+                    </Button>
+                  );
+                })
+              ) : (
+                // Object format (Major, Car Shipping)
+                <>
+                  {safeGet(data, 'hero.quick_actions.call_tel') && (
+                    <Button asChild variant="outline" className="w-full">
+                      <a href={safeGet(data, 'hero.quick_actions.call_tel')}>
+                        <Phone className="w-4 h-4 mr-2" />
+                        Call Now
+                      </a>
+                    </Button>
+                  )}
+                  {safeGet(data, 'hero.quick_actions.website_url') && (
+                    <Button asChild variant="outline" className="w-full">
+                      <a href={safeGet(data, 'hero.quick_actions.website_url')} target="_blank" rel="noopener noreferrer">
+                        <Globe className="w-4 h-4 mr-2" />
+                        Visit Website
+                      </a>
+                    </Button>
+                  )}
+                  {safeGet(data, 'hero.quick_actions.email_mailto') && (
+                    <Button asChild variant="outline" className="w-full">
+                      <a href={safeGet(data, 'hero.quick_actions.email_mailto')}>
+                        <Mail className="w-4 h-4 mr-2" />
+                        Email
+                      </a>
+                    </Button>
+                  )}
+                  {safeGet(data, 'hero.quick_actions.maps_link') && (
+                    <Button asChild variant="outline" className="w-full">
+                      <a href={safeGet(data, 'hero.quick_actions.maps_link')} target="_blank" rel="noopener noreferrer">
+                        <MapPin className="w-4 h-4 mr-2" />
+                        Directions
+                      </a>
+                    </Button>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -156,7 +370,7 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
             <div className="flex flex-wrap gap-2">
               {safeArray(data.about_and_badges.company_badges).map((badge: any, idx: number) => (
                 <Badge key={idx} variant="outline">
-                  {safeString(badge)}
+                  {renderBadge(badge)}
                 </Badge>
               ))}
             </div>
@@ -210,52 +424,39 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
         </Card>
       )}
 
-      {/* Quick Reference Guide - FIXED TO HANDLE BOTH FORMATS */}
-      {(() => {
-        // Try multiple possible structures
-        const guide = data.quick_reference_guide;
-        if (!guide) return null;
-
-        // Option 1: table.headers and table.rows
-        const headers = guide.table?.headers || guide.columns || [];
-        const rows = guide.table?.rows || guide.rows || [];
-        const title = guide.title || guide.description || 'Quick Reference Guide';
-
-        if (safeArray(headers).length === 0 || safeArray(rows).length === 0) return null;
-
-        return (
-          <Card className="p-6">
-            <h2 className="text-xl font-bold text-slate-900 mb-4">{title}</h2>
-            {guide.description && guide.description !== title && (
-              <p className="text-slate-600 mb-4">{guide.description}</p>
-            )}
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="bg-slate-100">
-                    {safeArray(headers).map((col: any, idx: number) => (
-                      <th key={idx} className="border border-slate-300 px-4 py-2 text-left text-sm font-semibold">
-                        {safeString(col)}
-                      </th>
+      {/* Quick Reference Guide - FIXED with explicit conditional */}
+      {tableData && (
+        <Card className="p-6">
+          <h2 className="text-xl font-bold text-slate-900 mb-4">{tableData.title}</h2>
+          {tableData.description && (
+            <p className="text-slate-600 mb-4">{tableData.description}</p>
+          )}
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="bg-slate-100">
+                  {tableData.headers.map((col: any, idx: number) => (
+                    <th key={idx} className="border border-slate-300 px-4 py-2 text-left text-sm font-semibold">
+                      {safeString(col)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {tableData.rows.map((row: any, rowIdx: number) => (
+                  <tr key={rowIdx} className="hover:bg-slate-50">
+                    {safeArray(row).map((cell: any, cellIdx: number) => (
+                      <td key={cellIdx} className="border border-slate-300 px-4 py-2 text-sm">
+                        {safeString(cell)}
+                      </td>
                     ))}
                   </tr>
-                </thead>
-                <tbody>
-                  {safeArray(rows).map((row: any, rowIdx: number) => (
-                    <tr key={rowIdx} className="hover:bg-slate-50">
-                      {safeArray(row).map((cell: any, cellIdx: number) => (
-                        <td key={cellIdx} className="border border-slate-300 px-4 py-2 text-sm">
-                          {safeString(cell)}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        );
-      })()}
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       {/* Pricing Information */}
       {data.pricing_information && (
@@ -330,65 +531,25 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
         </Card>
       )}
 
-      {/* Location & Hours - Handles ALL formats */}
+      {/* Location & Hours - FIXED */}
       {data.locations_and_hours && (
         <Card className="p-6">
           <h2 className="text-xl font-bold text-slate-900 mb-6">Location(s)</h2>
           
-          {/* Primary Location - Handles ALL 5 patterns */}
-          {(() => {
-            const locHours = data.locations_and_hours;
-            const primaryLoc = locHours.primary_location;
-            let addressLines: string[] = [];
-            
-            // Pattern 1: primary_location.full_address (Major Dumpsters)
-            if (primaryLoc?.full_address) {
-              addressLines = [primaryLoc.full_address];
-            }
-            // Pattern 2: primary_location with address_line_1 (Car Shipping Kings)
-            else if (primaryLoc?.address_line_1) {
-              if (primaryLoc.address_line_1) addressLines.push(primaryLoc.address_line_1);
-              if (primaryLoc.address_line_2) addressLines.push(primaryLoc.address_line_2);
-              const cityStateZip = [primaryLoc.city, primaryLoc.state, primaryLoc.zip].filter(Boolean).join(', ');
-              if (cityStateZip) addressLines.push(cityStateZip);
-            }
-            // Pattern 3: primary_location with address_line1 (Idaho Supreme - note: line1 not line_1)
-            else if (primaryLoc?.address_line1) {
-              if (primaryLoc.address_line1) addressLines.push(primaryLoc.address_line1);
-              if (primaryLoc.address_line2) addressLines.push(primaryLoc.address_line2);
-              const cityStateZip = [primaryLoc.city, primaryLoc.state, primaryLoc.zip].filter(Boolean).join(', ');
-              if (cityStateZip) addressLines.push(cityStateZip);
-            }
-            // Pattern 4: Direct full_address (Captain Mike's, ZoRoCo)
-            else if (locHours.full_address) {
-              addressLines = [locHours.full_address];
-            }
-            // Pattern 5: Fallback to city_state if available (Captain Mike's)
-            else if (locHours.city_state) {
-              addressLines = [locHours.city_state];
-            }
-            // Pattern 6: Last resort - extract city + state from primary_location
-            else if (primaryLoc?.city && primaryLoc?.state) {
-              addressLines = [`${primaryLoc.city}, ${primaryLoc.state}`];
-            }
-            
-            if (addressLines.length > 0) {
-              return (
-                <div className="mb-6">
-                  <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
-                    <MapPin className="w-5 h-5 text-blue-600" />
-                    Primary Location
-                  </h3>
-                  <div className="space-y-2 ml-7">
-                    {addressLines.map((line, idx) => (
-                      <p key={idx} className="text-slate-700">{line}</p>
-                    ))}
-                  </div>
-                </div>
-              );
-            }
-            return null;
-          })()}
+          {/* Primary Location */}
+          {locationLines.length > 0 && (
+            <div className="mb-6">
+              <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                <MapPin className="w-5 h-5 text-blue-600" />
+                Primary Location
+              </h3>
+              <div className="space-y-2 ml-7">
+                {locationLines.map((line, idx) => (
+                  <p key={idx} className="text-slate-700">{line}</p>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Multiple Locations Array */}
           {safeArray(data.locations_and_hours.locations).length > 0 && (
@@ -450,53 +611,18 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
             </div>
           )}
 
-          {/* General Hours - Handles both OBJECT and ARRAY formats */}
-          {(() => {
-            const hours = data.locations_and_hours.opening_hours;
-            if (!hours) return null;
-            
-            // Check if it's an array (ZoRoCo format)
-            if (Array.isArray(hours) && hours.length > 0) {
-              return (
-                <div>
-                  <h3 className="font-semibold text-slate-900 mb-3">Hours of Operation</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {hours.map((item: any, idx: number) => (
-                      <div key={idx} className="flex justify-between text-sm">
-                        <span className="font-medium text-slate-700">{item.day}</span>
-                        <span className="text-slate-600">{item.hours}</span>
-                      </div>
-                    ))}
-                  </div>
-                  {data.locations_and_hours.hours_note && (
-                    <p className="text-sm text-slate-500 mt-3">{data.locations_and_hours.hours_note}</p>
-                  )}
-                </div>
-              );
-            }
-            
-            // Otherwise it's an object (Major, Car Shipping, etc.)
-            if (typeof hours === 'object' && Object.keys(hours).length > 0) {
-              return (
-                <div>
-                  <h3 className="font-semibold text-slate-900 mb-3">Hours of Operation</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {Object.entries(hours).map(([day, hoursStr]: [string, any]) => (
-                      <div key={day} className="flex justify-between text-sm">
-                        <span className="font-medium capitalize text-slate-700">{day}</span>
-                        <span className="text-slate-600">{safeString(hoursStr)}</span>
-                      </div>
-                    ))}
-                  </div>
-                  {data.locations_and_hours.hours_note && (
-                    <p className="text-sm text-slate-500 mt-3">{data.locations_and_hours.hours_note}</p>
-                  )}
-                </div>
-              );
-            }
-            
-            return null;
-          })()}
+          {/* General Hours */}
+          {hoursContent && (
+            <div>
+              <h3 className="font-semibold text-slate-900 mb-3">Hours of Operation</h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {hoursContent}
+              </div>
+              {data.locations_and_hours.hours_note && (
+                <p className="text-sm text-slate-500 mt-3">{data.locations_and_hours.hours_note}</p>
+              )}
+            </div>
+          )}
         </Card>
       )}
 
@@ -577,7 +703,6 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
       <Card className="p-6">
         <h2 className="text-xl font-bold text-slate-900 mb-6">📸 Photo Gallery</h2>
         {(() => {
-          // Combine intake ROMA images + Media tab uploaded images
           const intakeImages = safeArray(data.photo_gallery?.images)
             .filter((img: any) => img.image_url && img.image_url !== '<>')
             .map((img: any) => ({
@@ -586,7 +711,6 @@ export function CompanyOverview({ company }: CompanyOverviewProps) {
               source: 'intake'
             }));
           
-          // Read from intake.galleryLinks (array of strings)
           const uploadedImages = safeArray(intake?.galleryLinks)
             .map((url: string) => ({
               url: url,
