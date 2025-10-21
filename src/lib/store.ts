@@ -45,6 +45,11 @@ interface StoreState {
   addTask: (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'organizationId'>) => Promise<void>;
   updateTask: (id: string, updates: Partial<Task>) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
+
+  // Media methods
+  uploadCompanyMedia: (companyId: string, imageUrl: string, alt: string) => Promise<void>;
+  deleteCompanyMedia: (companyId: string, imageId: string) => Promise<void>;
+  updateCompanyLogo: (companyId: string, logoUrl: string) => Promise<void>;
 }
 
 export const useStore = create<StoreState>((set, get) => ({
@@ -260,6 +265,10 @@ export const useStore = create<StoreState>((set, get) => ({
         yelpUrl: row.yelp_url,
         facebookUrl: row.facebook_url,
         logoUrl: row.logo_url,
+        media: {
+          logo: row.logo_url,
+          gallery: row.media_gallery || [],
+        },
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       }));
@@ -720,6 +729,108 @@ export const useStore = create<StoreState>((set, get) => ({
       await get().fetchTasks();
     } catch (error) {
       console.error('Error deleting task:', error);
+    }
+  },
+
+  // ===== MEDIA =====
+  uploadCompanyMedia: async (companyId, imageUrl, alt) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Get current company data
+      const { data: company, error: fetchError } = await supabase
+        .from('companies')
+        .select('media_gallery')
+        .eq('id', companyId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Parse existing gallery or create new array
+      const currentGallery = company?.media_gallery || [];
+      
+      // Add new image
+      const newImage = {
+        id: `img-${Date.now()}`,
+        url: imageUrl,
+        alt: alt,
+        uploadedAt: new Date().toISOString(),
+        uploadedBy: user.email || 'Unknown',
+      };
+
+      const updatedGallery = [...currentGallery, newImage];
+
+      // Update database
+      const { error: updateError } = await supabase
+        .from('companies')
+        .update({ 
+          media_gallery: updatedGallery,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', companyId);
+
+      if (updateError) throw updateError;
+
+      // Refresh companies
+      await get().fetchCompanies();
+    } catch (error) {
+      console.error('Error uploading media:', error);
+      throw error;
+    }
+  },
+
+  deleteCompanyMedia: async (companyId, imageId) => {
+    try {
+      // Get current company data
+      const { data: company, error: fetchError } = await supabase
+        .from('companies')
+        .select('media_gallery')
+        .eq('id', companyId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Remove image from gallery
+      const currentGallery = company?.media_gallery || [];
+      const updatedGallery = currentGallery.filter((img: any) => img.id !== imageId);
+
+      // Update database
+      const { error: updateError } = await supabase
+        .from('companies')
+        .update({ 
+          media_gallery: updatedGallery,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', companyId);
+
+      if (updateError) throw updateError;
+
+      // Refresh companies
+      await get().fetchCompanies();
+    } catch (error) {
+      console.error('Error deleting media:', error);
+      throw error;
+    }
+  },
+
+  updateCompanyLogo: async (companyId, logoUrl) => {
+    try {
+      const { error } = await supabase
+        .from('companies')
+        .update({ 
+          logo_url: logoUrl,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', companyId);
+
+      if (error) throw error;
+
+      // Refresh companies
+      await get().fetchCompanies();
+    } catch (error) {
+      console.error('Error updating logo:', error);
+      throw error;
     }
   },
 }));
