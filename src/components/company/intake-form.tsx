@@ -139,7 +139,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
               let address_line1 = loc.address_line1 || loc.address || loc.street || '';
               let city_state_zip = loc.city_state_zip || loc.city_state || '';
               
-              const fullAddr = loc.full_address || loc.address_full;
+              const fullAddr = loc.full_address || loc.address_full || loc.primary_address;
               if (fullAddr && !address_line1) {
                 if (typeof fullAddr === 'string') {
                   const parts = fullAddr.split(',');
@@ -166,7 +166,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
             let address_line1 = pl.address_line1 || pl.address || pl.street || '';
             let city_state_zip = pl.city_state_zip || pl.city_state || '';
             
-            const fullAddr = pl.full_address || pl.address_full;
+            const fullAddr = pl.full_address || pl.address_full || pl.primary_address;
             if (fullAddr) {
               if (typeof fullAddr === 'string' && !address_line1) {
                 const parts = fullAddr.split(',');
@@ -191,7 +191,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
             let address_line1 = lh.address_line1 || lh.address || lh.street || '';
             let city_state_zip = lh.city_state_zip || lh.city_state || '';
             
-            const fullAddr = lh.full_address || lh.address_full;
+            const fullAddr = lh.full_address || lh.address_full || lh.primary_address;
             if (fullAddr) {
               if (typeof fullAddr === 'string' && !address_line1) {
                 const parts = fullAddr.split(',');
