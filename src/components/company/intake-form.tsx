@@ -139,7 +139,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
               let address_line1 = loc.address_line1 || loc.address || loc.street || '';
               let city_state_zip = loc.city_state_zip || loc.city_state || '';
               
-              const fullAddr = loc.full_address || loc.address_full || loc.primary_address;
+              const fullAddr = lh.full_address || lh.address_full || lh.primary_address;
               if (fullAddr && !address_line1) {
                 if (typeof fullAddr === 'string') {
                   const parts = fullAddr.split(',');
@@ -166,7 +166,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
             let address_line1 = pl.address_line1 || pl.address || pl.street || '';
             let city_state_zip = pl.city_state_zip || pl.city_state || '';
             
-            const fullAddr = pl.full_address || pl.address_full || pl.primary_address;
+            const fullAddr = lh.full_address || lh.address_full || lh.primary_address;
             if (fullAddr) {
               if (typeof fullAddr === 'string' && !address_line1) {
                 const parts = fullAddr.split(',');
@@ -269,7 +269,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
                     category,
                     (Array.isArray(categoryData) 
                       ? categoryData 
-                      : (categoryData?.questions || categoryData?.items || categoryData?.qa_list || [])
+                      : (categoryData?.qa_items || categoryData?.questions || categoryData?.items || categoryData?.qa_list || [])
                     ).map((faq: any) => ({
                       question: faq.q || faq.question || faq.title || '',
                       answer: faq.a || faq.answer || faq.response || ''
@@ -284,6 +284,7 @@ export function IntakeForm({ company }: IntakeFormProps) {
             whats_new: faqs.whats_new ? {
               month_label: faqs.whats_new.month_label || faqs.whats_new.label || '',
               questions: (
+                faqs.whats_new.recent_updates || 
                 faqs.whats_new.updates || 
                 faqs.whats_new.monthly_updates || 
                 faqs.whats_new.questions || 
