@@ -237,12 +237,17 @@ export default function CompanyDetailPage() {
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
+        <TabsList className="gap-4">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="intake">Intake</TabsTrigger>
           <TabsTrigger value="media">Media</TabsTrigger>
           <TabsTrigger value="reviews">Reviews</TabsTrigger>
-          <TabsTrigger value="deliverables">Monthly Deliverables</TabsTrigger>
+          <TabsTrigger 
+            value="deliverables" 
+            className="bg-blue-50 data-[state=active]:bg-blue-600 data-[state=active]:text-white hover:bg-blue-100"
+          >
+            Monthly Deliverables
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-6">
