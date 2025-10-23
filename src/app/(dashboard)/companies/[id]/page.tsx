@@ -11,6 +11,7 @@ import { CompanyOverview } from '@/components/company/company-overview';
 import { IntakeForm } from '@/components/company/intake-form';
 import MediaGallery from '@/components/company/media-gallery';
 import { Reviews } from '@/components/company/reviews';
+import { MonthlyDeliverables } from '@/components/company/monthly-deliverables';
 import { 
   ArrowLeft, 
   Building2, 
@@ -36,7 +37,7 @@ export default function CompanyDetailPage() {
   const fetchIntakes = useStore((state) => state.fetchIntakes);
   const deleteCompany = useStore((state) => state.deleteCompany);
   const currentUserRole = useStore((state) => state.currentUserRole);
-  const initializeOrganization = useStore((state) => state.initializeOrganization); // ADDED
+  const initializeOrganization = useStore((state) => state.initializeOrganization);
 
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
@@ -45,9 +46,7 @@ export default function CompanyDetailPage() {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      // CRITICAL: Initialize organization FIRST before fetching anything
       await initializeOrganization();
-      // THEN fetch companies and intakes
       await Promise.all([
         fetchCompanies(),
         fetchIntakes(),
@@ -56,7 +55,7 @@ export default function CompanyDetailPage() {
     };
     
     loadData();
-  }, [initializeOrganization, fetchCompanies, fetchIntakes]); // ADDED initializeOrganization to deps
+  }, [initializeOrganization, fetchCompanies, fetchIntakes]);
 
   const company = companies.find((c) => c.id === companyId);
   const intake = intakes.find((i) => i.companyId === companyId);
@@ -126,7 +125,6 @@ export default function CompanyDetailPage() {
       <Card className="p-6">
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-4">
-            {/* Logo Display */}
             {company.logoUrl ? (
               <div className="w-16 h-16 rounded-lg overflow-hidden border-2 border-slate-200 bg-white flex items-center justify-center flex-shrink-0">
                 <img 
@@ -134,7 +132,6 @@ export default function CompanyDetailPage() {
                   alt={`${company.name} logo`}
                   className="w-full h-full object-contain p-1"
                   onError={(e) => {
-                    // Fallback to letter if image fails to load
                     e.currentTarget.style.display = 'none';
                     const parent = e.currentTarget.parentElement;
                     if (parent) {
@@ -213,7 +210,6 @@ export default function CompanyDetailPage() {
                 Edit
               </Button>
               
-              {/* Only show delete button for Admin and Manager */}
               {['admin', 'manager'].includes(currentUserRole || '') && (
                 <Button 
                   variant="outline" 
@@ -246,6 +242,7 @@ export default function CompanyDetailPage() {
           <TabsTrigger value="intake">Intake</TabsTrigger>
           <TabsTrigger value="media">Media</TabsTrigger>
           <TabsTrigger value="reviews">Reviews</TabsTrigger>
+          <TabsTrigger value="deliverables">Monthly Deliverables</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-6">
@@ -262,6 +259,10 @@ export default function CompanyDetailPage() {
 
         <TabsContent value="reviews" className="mt-6">
           <Reviews company={company} />
+        </TabsContent>
+
+        <TabsContent value="deliverables" className="mt-6">
+          <MonthlyDeliverables company={company} />
         </TabsContent>
       </Tabs>
     </div>
