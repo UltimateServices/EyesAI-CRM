@@ -9,56 +9,71 @@ export async function POST(request: Request) {
   try {
     const { company, intake } = await request.json();
 
-    const prompt = `You are an expert local SEO content strategist. Generate 5 blog title suggestions for ${company.name}, a business in ${company.city}, ${company.state}.
+    const industryCategory = intake?.industryCategory || 'local business';
+    const services = intake?.services?.length > 0 
+      ? intake.services.join(', ') 
+      : 'various local services';
+    const primaryFocus = intake?.primaryFocus || 'customer satisfaction';
 
-Business Details:
-- Industry: ${intake.industryCategory || 'local business'}
-- Services: ${intake.services?.join(', ') || 'various services'}
-- Focus: ${intake.primaryFocus || 'customer service'}
+    const prompt = `Generate 5 blog title suggestions for ${company.name} in ${company.city}, ${company.state}.
 
-Requirements for EACH title:
-1. H1: A compelling question or statement (8-12 words) that includes "${company.city}" naturally
-2. H2: A supporting subtitle (10-15 words) that includes "${company.name}" 
-3. Keywords: Exactly 4-5 geo-targeted keywords that include "${company.city}" or nearby areas
+Industry: ${industryCategory}
+Services: ${services}
+Focus: ${primaryFocus}
 
-The titles should:
-- Address common customer pain points or questions
-- Be locally relevant and geo-optimized
-- Include year (2025) when appropriate for freshness
-- Be compelling and click-worthy
-- Include the city name naturally (not forced)
+For each title, create:
+1. H1: Compelling question/statement (8-12 words) including "${company.city}"
+2. H2: Supporting subtitle (10-15 words) including "${company.name}"
+3. Keywords: 4-5 geo-targeted keywords with "${company.city}"
 
-Format your response as a JSON array:
+Return ONLY a JSON array, nothing else:
+
 [
   {
-    "h1": "Question or statement here",
-    "h2": "Supporting subtitle here", 
-    "keywords": ["keyword 1", "keyword 2", "keyword 3", "keyword 4", "keyword 5"]
+    "h1": "Title here",
+    "h2": "Subtitle here",
+    "keywords": ["kw1", "kw2", "kw3", "kw4", "kw5"]
   }
-]
-
-Generate exactly 5 diverse title suggestions.`;
+]`;
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 2000,
-      messages: [{
-        role: 'user',
-        content: prompt
-      }]
+      messages: [{ role: 'user', content: prompt }]
     });
 
     const content = response.content[0].type === 'text' 
-      ? response.content[0].text 
+      ? response.content[0].text.trim()
       : '';
 
-    // Extract JSON from response
-    const jsonMatch = content.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) {
-      throw new Error('Failed to parse title suggestions');
+    console.log('Claude response:', content);
+
+    // Try multiple extraction methods
+    let suggestions;
+    
+    // Method 1: Direct JSON parse (if Claude returns clean JSON)
+    try {
+      suggestions = JSON.parse(content);
+    } catch {
+      // Method 2: Extract from markdown code block
+      const codeBlockMatch = content.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
+      if (codeBlockMatch) {
+        suggestions = JSON.parse(codeBlockMatch[1]);
+      } else {
+        // Method 3: Find any array in the response
+        const arrayMatch = content.match(/\[[\s\S]*\]/);
+        if (arrayMatch) {
+          suggestions = JSON.parse(arrayMatch[0]);
+        } else {
+          throw new Error('No valid JSON found in response');
+        }
+      }
     }
 
-    const suggestions = JSON.parse(jsonMatch[0]);
+    // Validate
+    if (!Array.isArray(suggestions) || suggestions.length === 0) {
+      throw new Error('Invalid suggestions format');
+    }
 
     return NextResponse.json({ suggestions });
 
