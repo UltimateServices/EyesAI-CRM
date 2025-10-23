@@ -125,8 +125,8 @@ Format as JSON array of strings: ["takeaway 1", "takeaway 2", ...]`;
       ? takeawaysResponse.content[0].text
       : '[]';
     
-    // Extract JSON from response
-    const takeawaysMatch = takeawaysText.match(/\[.*\]/s);
+    // Extract JSON from response - FIXED REGEX
+    const takeawaysMatch = takeawaysText.match(/\[[\s\S]*\]/);
     const keyTakeaways = takeawaysMatch ? JSON.parse(takeawaysMatch[0]) : [];
 
     // Step 5: Generate Meta Description

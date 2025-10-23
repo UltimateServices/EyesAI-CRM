@@ -12,7 +12,7 @@ import { IntakeForm } from '@/components/company/intake-form';
 import MediaGallery from '@/components/company/media-gallery';
 import { Reviews } from '@/components/company/reviews';
 import { MonthlyDeliverables } from '@/components/company/monthly-deliverables';
-import { BlogBuilder } from '@/components/company/blog-builder';
+import BlogBuilder from '@/components/company/blog-builder';
 import { 
   ArrowLeft, 
   Building2, 
@@ -258,7 +258,7 @@ export default function CompanyDetailPage() {
         </TabsList>
 
         <TabsContent value="overview" className="mt-6">
-          <CompanyOverview company={company} intake={intake} />
+          <CompanyOverview company={company} />
         </TabsContent>
 
         <TabsContent value="intake" className="mt-6">
