@@ -12,6 +12,7 @@ import { IntakeForm } from '@/components/company/intake-form';
 import MediaGallery from '@/components/company/media-gallery';
 import { Reviews } from '@/components/company/reviews';
 import { MonthlyDeliverables } from '@/components/company/monthly-deliverables';
+import { BlogBuilder } from '@/components/company/blog-builder';
 import { 
   ArrowLeft, 
   Building2, 
@@ -248,6 +249,12 @@ export default function CompanyDetailPage() {
           >
             Monthly Deliverables
           </TabsTrigger>
+          <TabsTrigger 
+            value="blog-builder" 
+            className="bg-purple-50 data-[state=active]:bg-purple-600 data-[state=active]:text-white hover:bg-purple-100"
+          >
+            Blog Builder
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-6">
@@ -268,6 +275,10 @@ export default function CompanyDetailPage() {
 
         <TabsContent value="deliverables" className="mt-6">
           <MonthlyDeliverables company={company} />
+        </TabsContent>
+
+        <TabsContent value="blog-builder" className="mt-6">
+          <BlogBuilder company={company} />
         </TabsContent>
       </Tabs>
     </div>
