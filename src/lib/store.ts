@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Organization, OrganizationMember, Company, Intake, Review, Task } from './types';
+import { Organization, OrganizationMember, Company, Intake, Review, Task, Blog } from './types';
 
 const supabase = createClientComponentClient();
 
@@ -15,6 +15,7 @@ interface StoreState {
   intakes: Intake[];
   reviews: Review[];
   tasks: Task[];
+  blogs: Blog[];
   
   // Organization methods
   initializeOrganization: () => Promise<void>;
@@ -50,6 +51,12 @@ interface StoreState {
   uploadCompanyMedia: (companyId: string, imageUrl: string, alt: string) => Promise<void>;
   deleteCompanyMedia: (companyId: string, imageId: string) => Promise<void>;
   updateCompanyLogo: (companyId: string, logoUrl: string) => Promise<void>;
+
+  // Blog methods
+  fetchBlogs: () => Promise<void>;
+  saveBlog: (blog: Partial<Blog>) => Promise<Blog>;
+  updateBlog: (id: string, updates: Partial<Blog>) => Promise<void>;
+  deleteBlog: (id: string) => Promise<void>;
 }
 
 export const useStore = create<StoreState>((set, get) => ({
@@ -60,6 +67,7 @@ export const useStore = create<StoreState>((set, get) => ({
   intakes: [],
   reviews: [],
   tasks: [],
+  blogs: [],
 
   // ===== ORGANIZATION =====
   initializeOrganization: async () => {
@@ -647,7 +655,7 @@ export const useStore = create<StoreState>((set, get) => ({
         .from('tasks')
         .select('*, companies!inner(organization_id)')
         .eq('companies.organization_id', currentOrganization.id)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false});
 
       if (error) throw error;
 
@@ -830,6 +838,175 @@ export const useStore = create<StoreState>((set, get) => ({
       await get().fetchCompanies();
     } catch (error) {
       console.error('Error updating logo:', error);
+      throw error;
+    }
+  },
+
+  // ===== BLOGS =====
+  fetchBlogs: async () => {
+    try {
+      const { currentOrganization } = get();
+      if (!currentOrganization) return;
+
+      const { data, error } = await supabase
+        .from('blogs')
+        .select('*')
+        .eq('organization_id', currentOrganization.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const blogs: Blog[] = (data || []).map((row: any) => ({
+        id: row.id,
+        companyId: row.company_id,
+        organizationId: row.organization_id,
+        h1: row.h1,
+        h2: row.h2,
+        quickAnswer: row.quick_answer,
+        keyTakeaways: row.key_takeaways,
+        content: row.content,
+        faqs: row.faqs,
+        selectedImages: row.selected_images,
+        selectedReviewIds: row.selected_review_ids,
+        metaTitle: row.meta_title,
+        metaDescription: row.meta_description,
+        keywords: row.keywords,
+        seoScore: row.seo_score,
+        schemaMarkup: row.schema_markup,
+        authorName: row.author_name,
+        authorTitle: row.author_title,
+        authorBio: row.author_bio,
+        status: row.status,
+        publishedUrl: row.published_url,
+        publishedAt: row.published_at,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }));
+
+      set({ blogs });
+    } catch (error) {
+      console.error('Error fetching blogs:', error);
+    }
+  },
+
+  saveBlog: async (blog: Partial<Blog>) => {
+    try {
+      const { currentOrganization } = get();
+      if (!currentOrganization) throw new Error('No organization selected');
+
+      const blogData = {
+        company_id: blog.companyId,
+        organization_id: currentOrganization.id,
+        h1: blog.h1,
+        h2: blog.h2,
+        quick_answer: blog.quickAnswer,
+        key_takeaways: blog.keyTakeaways,
+        content: blog.content,
+        faqs: blog.faqs,
+        selected_images: blog.selectedImages,
+        selected_review_ids: blog.selectedReviewIds,
+        meta_title: blog.metaTitle,
+        meta_description: blog.metaDescription,
+        keywords: blog.keywords,
+        seo_score: blog.seoScore,
+        schema_markup: blog.schemaMarkup,
+        author_name: blog.authorName,
+        author_title: blog.authorTitle,
+        author_bio: blog.authorBio,
+        status: blog.status || 'draft',
+        published_url: blog.publishedUrl,
+        published_at: blog.publishedAt,
+      };
+
+      const { data, error } = await supabase
+        .from('blogs')
+        .insert(blogData)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const convertedData: Blog = {
+        id: data.id,
+        companyId: data.company_id,
+        organizationId: data.organization_id,
+        h1: data.h1,
+        h2: data.h2,
+        quickAnswer: data.quick_answer,
+        keyTakeaways: data.key_takeaways,
+        content: data.content,
+        faqs: data.faqs,
+        selectedImages: data.selected_images,
+        selectedReviewIds: data.selected_review_ids,
+        metaTitle: data.meta_title,
+        metaDescription: data.meta_description,
+        keywords: data.keywords,
+        seoScore: data.seo_score,
+        schemaMarkup: data.schema_markup,
+        authorName: data.author_name,
+        authorTitle: data.author_title,
+        authorBio: data.author_bio,
+        status: data.status,
+        publishedUrl: data.published_url,
+        publishedAt: data.published_at,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+      };
+
+      set((state) => ({ blogs: [convertedData, ...state.blogs] }));
+      return convertedData;
+    } catch (error) {
+      console.error('Error saving blog:', error);
+      throw error;
+    }
+  },
+
+  updateBlog: async (id: string, updates: Partial<Blog>) => {
+    try {
+      const updateData: any = {
+        updated_at: new Date().toISOString(),
+      };
+
+      if (updates.h1) updateData.h1 = updates.h1;
+      if (updates.h2) updateData.h2 = updates.h2;
+      if (updates.quickAnswer) updateData.quick_answer = updates.quickAnswer;
+      if (updates.keyTakeaways) updateData.key_takeaways = updates.keyTakeaways;
+      if (updates.content) updateData.content = updates.content;
+      if (updates.faqs) updateData.faqs = updates.faqs;
+      if (updates.selectedImages) updateData.selected_images = updates.selectedImages;
+      if (updates.selectedReviewIds) updateData.selected_review_ids = updates.selectedReviewIds;
+      if (updates.metaDescription) updateData.meta_description = updates.metaDescription;
+      if (updates.keywords) updateData.keywords = updates.keywords;
+      if (updates.seoScore !== undefined) updateData.seo_score = updates.seoScore;
+      if (updates.status) updateData.status = updates.status;
+      if (updates.publishedUrl) updateData.published_url = updates.publishedUrl;
+
+      const { error } = await supabase
+        .from('blogs')
+        .update(updateData)
+        .eq('id', id);
+
+      if (error) throw error;
+
+      await get().fetchBlogs();
+    } catch (error) {
+      console.error('Error updating blog:', error);
+      throw error;
+    }
+  },
+
+  deleteBlog: async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('blogs')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      await get().fetchBlogs();
+    } catch (error) {
+      console.error('Error deleting blog:', error);
       throw error;
     }
   },

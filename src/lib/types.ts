@@ -158,3 +158,43 @@ export interface Task {
   createdAt?: string;
   updatedAt?: string;
 }
+
+export interface Blog {
+  id: string;
+  companyId: string;
+  organizationId?: string;
+  
+  // Content
+  h1: string;
+  h2?: string;
+  quickAnswer?: string;
+  keyTakeaways?: string[];
+  content: string;
+  faqs?: Array<{ q: string; a: string }>;
+  
+  // Media
+  selectedImages?: Array<{ url: string; altText: string; position: number }>;
+  
+  // Reviews
+  selectedReviewIds?: string[];
+  
+  // SEO
+  metaTitle?: string;
+  metaDescription?: string;
+  keywords?: string[];
+  seoScore?: number;
+  schemaMarkup?: any;
+  
+  // Author
+  authorName?: string;
+  authorTitle?: string;
+  authorBio?: string;
+  
+  // Publishing
+  status?: 'draft' | 'published';
+  publishedUrl?: string;
+  publishedAt?: string;
+  
+  createdAt?: string;
+  updatedAt?: string;
+}
