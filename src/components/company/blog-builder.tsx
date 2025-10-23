@@ -1,634 +1,792 @@
 'use client';
 
-import { useState } from 'react';
-import { FileText, Sparkles, Image, MessageSquare, CheckCircle, AlertCircle, Eye, Send, Loader2, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react';
-import { Company } from '@/lib/types';
+import { useState, useEffect } from 'react';
+import { useStore } from '@/lib/store';
+import { Company, Review } from '@/lib/types';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+import { 
+  Sparkles, 
+  Image as ImageIcon, 
+  MessageSquare, 
+  CheckCircle, 
+  AlertCircle,
+  Loader2,
+  ArrowLeft,
+  ArrowRight,
+  Star,
+  TrendingUp,
+  Share2,
+  Twitter,
+  Facebook,
+  Linkedin,
+  Link as LinkIcon
+} from 'lucide-react';
 
 interface BlogBuilderProps {
   company: Company;
 }
 
-export function BlogBuilder({ company }: BlogBuilderProps) {
-  const [step, setStep] = useState(1); // 1=topics, 2=review, 3=images, 4=generate, 5=edit
-  const [generating, setGenerating] = useState(false);
-  const [selectedTopic, setSelectedTopic] = useState<any>(null);
-  const [topics, setTopics] = useState<any[]>([]);
-  const [selectedReview, setSelectedReview] = useState<any>(null);
-  const [selectedImages, setSelectedImages] = useState<any[]>([]);
-  const [blogContent, setBlogContent] = useState({
-    h1: '',
-    h2: '',
-    content: '',
-    faqs: [],
-    metaDescription: '',
-    keywords: []
-  });
+interface SelectedImage {
+  url: string;
+  altText: string;
+  position: number;
+}
+
+const AUTHORS = [
+  {
+    name: 'Sarah Mitchell',
+    title: 'Content Strategist',
+    bio: 'Sarah specializes in creating engaging, SEO-optimized content for local businesses.',
+  },
+  {
+    name: 'Marcus Rivera',
+    title: 'SEO Specialist',
+    bio: 'Marcus has over 10 years of experience in local SEO and content marketing.',
+  },
+  {
+    name: 'Jessica Chen',
+    title: 'Digital Marketing Expert',
+    bio: 'Jessica helps businesses grow their online presence through strategic content.',
+  },
+];
+
+export default function BlogBuilder({ company }: BlogBuilderProps) {
+  const getIntakeByCompanyId = useStore((state) => state.getIntakeByCompanyId);
+  const reviews = useStore((state) => state.reviews);
+  const saveBlog = useStore((state) => state.saveBlog);
+
+  const intake = getIntakeByCompanyId(company.id);
+  const companyReviews = reviews.filter((r) => r.companyId === company.id);
+  const fiveStarReviews = companyReviews.filter((r) => r.rating === 5);
+
+  // Step management
+  const [currentStep, setCurrentStep] = useState(1);
+
+  // Step 1: Blog Topic
+  const [h1, setH1] = useState('');
+  const [h2, setH2] = useState('');
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywordInput, setKeywordInput] = useState('');
+
+  // Step 2: Review Selection
+  const [selectedReviews, setSelectedReviews] = useState<Review[]>([]);
+
+  // Step 3: Image Selection
+  const availableImages = intake?.galleryLinks || [];
+  const [selectedImages, setSelectedImages] = useState<string[]>([]);
+  const [imageAltTexts, setImageAltTexts] = useState<Record<string, string>>({});
+
+  // Step 4: Generation
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationError, setGenerationError] = useState('');
+
+  // Step 5: Generated Blog
+  const [generatedBlog, setGeneratedBlog] = useState<any>(null);
+  const [selectedAuthor, setSelectedAuthor] = useState(AUTHORS[0]);
   const [seoScore, setSeoScore] = useState(0);
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Mock data - will connect to actual APIs
-  const mockTopics = [
-    {
-      id: 1,
-      h1: "How Often Should You Rotate Your Tires in Miami's Heat?",
-      h2: "Florida's climate is tough on tires. Here's what local drivers need to know.",
-      keywords: ['tire rotation', 'Miami', 'tire maintenance'],
-      seoScore: 92
-    },
-    {
-      id: 2,
-      h1: "5 Signs You Need New Tires in South Florida",
-      h2: "Don't wait for a blowout. Watch for these warning signs.",
-      keywords: ['tire replacement', 'Miami', 'tire safety'],
-      seoScore: 88
-    },
-    {
-      id: 3,
-      h1: "Best Tire Shops in Miami: What to Look For",
-      h2: "Not all tire shops are created equal. Here's how to choose the right one.",
-      keywords: ['tire shop Miami', 'best tires', 'auto service'],
-      seoScore: 95
-    },
-    {
-      id: 4,
-      h1: "Tire Alignment vs. Tire Rotation: Miami Driver's Guide",
-      h2: "Understanding the difference can save you hundreds in tire costs.",
-      keywords: ['alignment', 'rotation', 'Miami', 'tire care'],
-      seoScore: 85
-    },
-    {
-      id: 5,
-      h1: "Why Your Tires Wear Faster in Florida (And What to Do About It)",
-      h2: "Heat, humidity, and highways take a toll. Here's how to protect your investment.",
-      keywords: ['tire wear', 'Florida', 'heat damage', 'tire life'],
-      seoScore: 90
+  // Auto-generate alt text suggestions when images are selected
+  useEffect(() => {
+    if (selectedImages.length === 3 && Object.keys(imageAltTexts).length === 0) {
+      const suggestions: Record<string, string> = {};
+      selectedImages.forEach((url, index) => {
+        suggestions[url] = `${company.name} professional service in ${company.city} - Image ${index + 1}`;
+      });
+      setImageAltTexts(suggestions);
     }
-  ];
+  }, [selectedImages, company.name, company.city]);
 
-  const mockReviews = [
-    {
-      id: 1,
-      author: 'Maria G.',
-      text: 'Best tire service in Miami! Fast, professional, and they explained everything clearly.',
-      rating: 5,
-      date: '2025-10-15'
-    },
-    {
-      id: 2,
-      author: 'John D.',
-      text: 'Fixed my alignment issue same day. Great prices and honest service.',
-      rating: 5,
-      date: '2025-10-10'
-    },
-    {
-      id: 3,
-      author: 'Sarah M.',
-      text: 'The team at Mr Goma Tires went above and beyond. Highly recommend!',
-      rating: 5,
-      date: '2025-10-08'
-    }
-  ];
+  // Calculate SEO Score
+  const calculateSEOScore = (blog: any) => {
+    let score = 0;
 
-  const mockImages = [
-    { id: 1, url: '/placeholder-shop.jpg', alt: 'Shop exterior', title: 'Shop Front' },
-    { id: 2, url: '/placeholder-mechanic.jpg', alt: 'Mechanic working', title: 'Mechanic at Work' },
-    { id: 3, url: '/placeholder-tools.jpg', alt: 'Tools on workbench', title: 'Professional Tools' },
-    { id: 4, url: '/placeholder-car.jpg', alt: 'Car on lift', title: 'Service Bay' },
-    { id: 5, url: '/placeholder-tire.jpg', alt: 'Tire close up', title: 'Tire Detail' },
-    { id: 6, url: '/placeholder-waiting.jpg', alt: 'Waiting area', title: 'Customer Lounge' },
-    { id: 7, url: '/placeholder-team.jpg', alt: 'Team photo', title: 'Our Team' },
-    { id: 8, url: '/placeholder-sign.jpg', alt: 'Business sign', title: 'Storefront Sign' }
-  ];
+    // GEO/Local (30 points)
+    const companyMentions = (blog.content.match(new RegExp(company.name, 'gi')) || []).length;
+    const locationMentions = (blog.content.match(new RegExp(company.city || '', 'gi')) || []).length;
+    score += Math.min(companyMentions * 5, 15);
+    score += Math.min(locationMentions * 3, 15);
 
-  const generateTopics = async () => {
-    setGenerating(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    setTopics(mockTopics);
-    setGenerating(false);
-    setStep(1);
+    // Structure (25 points)
+    const hasH3s = blog.content.includes('<h3>') ? 10 : 0;
+    const hasBullets = blog.content.includes('<ul>') ? 8 : 0;
+    const hasImages = selectedImages.length >= 3 ? 7 : 0;
+    score += hasH3s + hasBullets + hasImages;
+
+    // AI Discovery (25 points)
+    const hasFAQs = blog.faqs && blog.faqs.length >= 5 ? 10 : 0;
+    const hasQuickAnswer = blog.quickAnswer ? 8 : 0;
+    const hasTakeaways = blog.keyTakeaways && blog.keyTakeaways.length >= 4 ? 7 : 0;
+    score += hasFAQs + hasQuickAnswer + hasTakeaways;
+
+    // Engagement (20 points)
+    const hasReviews = selectedReviews.length >= 3 ? 10 : 0;
+    const hasKeywords = keywords.length >= 3 ? 5 : 0;
+    const hasCTAs = 5; // Assume we add CTAs
+    score += hasReviews + hasKeywords + hasCTAs;
+
+    return Math.min(score, 100);
   };
 
+  // Step 1 Validation
+  const canProceedFromStep1 = h1.trim().length > 0 && h2.trim().length > 0 && keywords.length >= 3;
+
+  // Step 2 Validation
+  const canProceedFromStep2 = selectedReviews.length === 3;
+
+  // Step 3 Validation
+  const canProceedFromStep3 = selectedImages.length === 3 && 
+    selectedImages.every(url => imageAltTexts[url]?.trim().length > 0);
+
+  // Handle keyword addition
+  const addKeyword = () => {
+    if (keywordInput.trim() && keywords.length < 10) {
+      setKeywords([...keywords, keywordInput.trim()]);
+      setKeywordInput('');
+    }
+  };
+
+  const removeKeyword = (index: number) => {
+    setKeywords(keywords.filter((_, i) => i !== index));
+  };
+
+  // Handle review selection (max 3)
+  const toggleReview = (review: Review) => {
+    if (selectedReviews.find(r => r.id === review.id)) {
+      setSelectedReviews(selectedReviews.filter(r => r.id !== review.id));
+    } else if (selectedReviews.length < 3) {
+      setSelectedReviews([...selectedReviews, review]);
+    }
+  };
+
+  // Handle image selection (max 3)
+  const toggleImage = (url: string) => {
+    if (selectedImages.includes(url)) {
+      setSelectedImages(selectedImages.filter(u => u !== url));
+      const newAltTexts = { ...imageAltTexts };
+      delete newAltTexts[url];
+      setImageAltTexts(newAltTexts);
+    } else if (selectedImages.length < 3) {
+      setSelectedImages([...selectedImages, url]);
+    }
+  };
+
+  // Generate Blog
   const generateBlog = async () => {
-    setGenerating(true);
-    // Simulate AI generation
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    
-    // Mock generated content
-    setBlogContent({
-      h1: selectedTopic.h1,
-      h2: selectedTopic.h2,
-      content: `<p>When ${selectedReview.author} needed tire service in Miami, she discovered what sets ${company.name} apart from other shops in South Florida...</p>
+    setIsGenerating(true);
+    setGenerationError('');
+
+    try {
+      const response = await fetch('/api/generate-blog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company: {
+            id: company.id,
+            name: company.name,
+            city: company.city,
+            state: company.state,
+          },
+          topic: { h1, h2 },
+          selectedReviews: selectedReviews.map(r => ({
+            author: r.author,
+            text: r.text,
+            rating: r.rating,
+          })),
+          selectedImages: selectedImages.map((url, index) => ({
+            url,
+            altText: imageAltTexts[url],
+            position: index + 1,
+          })),
+          keywords,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate blog');
+      }
+
+      const data = await response.json();
+      setGeneratedBlog(data);
       
-<h3>Why Tire Rotation Matters in Miami's Climate</h3>
-<p>Miami's intense heat and humidity create unique challenges for tire maintenance. The constant exposure to high temperatures can accelerate tire wear, making regular rotation even more critical than in cooler climates.</p>
+      // Calculate SEO score
+      const score = calculateSEOScore(data);
+      setSeoScore(score);
 
-<h3>What Sets Quality Tire Service Apart</h3>
-<p>As ${selectedReview.author} experienced firsthand:</p>
-<blockquote>"${selectedReview.text}"</blockquote>
-<p>This kind of service excellence comes from years of experience and a commitment to customer satisfaction.</p>
+      setCurrentStep(5);
+    } catch (error: any) {
+      console.error('Generation error:', error);
+      setGenerationError(error.message || 'Failed to generate blog');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
-<h3>The Professional Approach to Tire Rotation</h3>
-<p>At ${company.name}, the process involves more than just moving tires around. Our certified technicians inspect each tire for wear patterns, check alignment, and ensure proper inflation.</p>
+  // Save Blog
+  const handleSaveBlog = async () => {
+    if (!generatedBlog) return;
 
-<h3>Your Tire Maintenance Schedule in South Florida</h3>
-<p>Given Miami's unique driving conditions, we recommend tire rotation every 5,000-6,000 miles, or roughly every 6 months for most drivers.</p>`,
-      faqs: [
-        { q: "How often should I rotate my tires in Miami?", a: "In Miami's heat, we recommend tire rotation every 5,000-6,000 miles." },
-        { q: "How much does tire rotation cost in Miami?", a: "Tire rotation typically costs $20-$40, but many shops include it free with other services." },
-        { q: "Can I rotate my own tires?", a: "While possible, professional rotation ensures proper torque and allows for inspection." },
-        { q: "What happens if I don't rotate my tires?", a: "Uneven wear can reduce tire life by up to 50% and affect handling." },
-        { q: "Does Mr Goma Tires offer free tire rotation?", a: "Contact us for current promotions and service packages." }
-      ],
-      metaDescription: `Learn how often to rotate your tires in Miami's heat. Expert advice from ${company.name} on tire maintenance for South Florida drivers.`,
-      keywords: selectedTopic.keywords
-    });
+    setIsSaving(true);
+    try {
+      const imageData: SelectedImage[] = selectedImages.map((url, index) => ({
+        url,
+        altText: imageAltTexts[url],
+        position: index + 1,
+      }));
+
+      await saveBlog({
+        companyId: company.id,
+        h1,
+        h2,
+        quickAnswer: generatedBlog.quickAnswer,
+        keyTakeaways: generatedBlog.keyTakeaways,
+        content: generatedBlog.content,
+        faqs: generatedBlog.faqs,
+        selectedImages: imageData,
+        selectedReviewIds: selectedReviews.map(r => r.id),
+        metaTitle: h1,
+        metaDescription: generatedBlog.metaDescription,
+        keywords,
+        seoScore,
+        authorName: selectedAuthor.name,
+        authorTitle: selectedAuthor.title,
+        authorBio: selectedAuthor.bio,
+        status: 'draft',
+      });
+
+      alert('✅ Blog saved successfully!');
+    } catch (error: any) {
+      console.error('Save error:', error);
+      alert('❌ Failed to save blog: ' + error.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Share handlers
+  const handleShare = (platform: string) => {
+    const url = window.location.href;
+    const text = `Check out: ${h1}`;
     
-    calculateSEOScore();
-    setGenerating(false);
-    setStep(5);
-  };
-
-  const calculateSEOScore = () => {
-    // Mock scoring - will be real calculation
-    const scores = {
-      geoLocal: 28, // out of 30
-      structure: 23, // out of 25
-      aiDiscovery: 24, // out of 25
-      engagement: 18 // out of 20
+    const shareUrls: Record<string, string> = {
+      twitter: `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`,
+      facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`,
+      linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`,
     };
-    const total = scores.geoLocal + scores.structure + scores.aiDiscovery + scores.engagement;
-    setSeoScore(total);
+
+    if (shareUrls[platform]) {
+      window.open(shareUrls[platform], '_blank', 'width=600,height=400');
+    }
   };
 
-  const getScoreColor = (score: number) => {
-    if (score >= 90) return 'text-green-600 bg-green-100 border-green-300';
-    if (score >= 70) return 'text-yellow-600 bg-yellow-100 border-yellow-300';
-    return 'text-red-600 bg-red-100 border-red-300';
+  const copyLink = () => {
+    navigator.clipboard.writeText(window.location.href);
+    alert('Link copied to clipboard!');
   };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-purple-600 to-purple-700 rounded-xl p-8 text-white shadow-lg">
-        <div className="flex items-start justify-between mb-4">
-          <div>
-            <div className="flex items-center gap-3 mb-3">
-              <FileText className="w-7 h-7" />
-              <h2 className="text-3xl font-bold">Blog Builder</h2>
-            </div>
-            <p className="text-purple-100 text-lg">
-              AI-powered blog creation for {company.name}
-            </p>
-          </div>
-          
-          <div className="bg-white/20 backdrop-blur-sm px-5 py-3 rounded-xl border border-white/30">
-            <div className="text-sm text-purple-100 mb-1 font-medium">Step</div>
-            <div className="text-xl font-bold">{step} of 5</div>
-          </div>
-        </div>
-
-        {/* Progress Steps */}
-        <div className="flex items-center gap-2 mt-6">
-          {[1, 2, 3, 4, 5].map((s) => (
-            <div key={s} className="flex items-center flex-1">
-              <div className={`h-2 rounded-full flex-1 transition-all ${
-                s <= step ? 'bg-white' : 'bg-white/30'
-              }`} />
+      {/* Progress Steps */}
+      <Card className="p-6">
+        <div className="flex items-center justify-between">
+          {[1, 2, 3, 4, 5].map((step) => (
+            <div key={step} className="flex items-center">
+              <div className={`flex items-center justify-center w-10 h-10 rounded-full ${
+                currentStep >= step ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'
+              }`}>
+                {step}
+              </div>
+              {step < 5 && (
+                <div className={`w-16 h-1 mx-2 ${
+                  currentStep > step ? 'bg-blue-600' : 'bg-slate-200'
+                }`} />
+              )}
             </div>
           ))}
         </div>
-        
-        <div className="flex justify-between text-xs text-purple-100 mt-2">
-          <span>Topics</span>
-          <span>Review</span>
-          <span>Images</span>
-          <span>Generate</span>
-          <span>Edit</span>
+        <div className="flex items-center justify-between mt-3">
+          <span className="text-xs text-slate-600">Topic</span>
+          <span className="text-xs text-slate-600">Reviews</span>
+          <span className="text-xs text-slate-600">Images</span>
+          <span className="text-xs text-slate-600">Generate</span>
+          <span className="text-xs text-slate-600">Publish</span>
         </div>
-      </div>
+      </Card>
 
-      {/* Step 1: Topic Selection */}
-      {step === 1 && (
-        <div className="space-y-4">
-          <div className="bg-white rounded-xl border-2 border-slate-200 p-8">
-            <div className="text-center mb-8">
-              <h3 className="text-2xl font-bold text-slate-900 mb-3">
-                Choose Your Blog Topic
-              </h3>
-              <p className="text-slate-600">
-                AI analyzed {company.name} and generated these optimized topics
-              </p>
-            </div>
-
-            {topics.length === 0 ? (
-              <div className="text-center py-12">
-                <Sparkles className="w-16 h-16 text-purple-400 mx-auto mb-4" />
-                <button
-                  onClick={generateTopics}
-                  disabled={generating}
-                  className="px-8 py-4 bg-purple-600 text-white rounded-xl hover:bg-purple-700 font-bold text-lg shadow-lg hover:shadow-xl transition-all disabled:opacity-50"
-                >
-                  {generating ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin inline mr-2" />
-                      Generating Topics...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-5 h-5 inline mr-2" />
-                      Generate Blog Topics with AI
-                    </>
-                  )}
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {topics.map((topic) => (
-                  <div
-                    key={topic.id}
-                    onClick={() => setSelectedTopic(topic)}
-                    className={`p-6 rounded-xl border-2 cursor-pointer transition-all hover:shadow-md ${
-                      selectedTopic?.id === topic.id
-                        ? 'border-purple-500 bg-purple-50'
-                        : 'border-slate-200 hover:border-purple-300'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1">
-                        <h4 className="text-lg font-bold text-slate-900 mb-2">
-                          {topic.h1}
-                        </h4>
-                        <p className="text-slate-600 text-sm mb-3">
-                          {topic.h2}
-                        </p>
-                      </div>
-                      <div className={`ml-4 px-3 py-1 rounded-full text-sm font-bold border-2 ${getScoreColor(topic.seoScore)}`}>
-                        {topic.seoScore}/100
-                      </div>
-                    </div>
-                    
-                    <div className="flex flex-wrap gap-2">
-                      <span className="text-xs text-slate-500 font-medium">🎯 Keywords:</span>
-                      {topic.keywords.map((kw: string, i: number) => (
-                        <span key={i} className="px-2 py-1 bg-slate-100 text-slate-700 rounded text-xs font-medium">
-                          {kw}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-
-                <div className="flex gap-3 pt-4">
-                  <button
-                    onClick={generateTopics}
-                    className="px-6 py-3 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 font-semibold transition-all"
-                  >
-                    <RefreshCw className="w-4 h-4 inline mr-2" />
-                    Regenerate Topics
-                  </button>
-                  
-                  <button
-                    onClick={() => setStep(2)}
-                    disabled={!selectedTopic}
-                    className="px-8 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex-1"
-                  >
-                    Continue with Selected Topic →
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Step 2: Review Selection */}
-      {step === 2 && (
-        <div className="bg-white rounded-xl border-2 border-slate-200 p-8">
-          <div className="mb-8">
-            <h3 className="text-2xl font-bold text-slate-900 mb-3">
-              Select Customer Review to Feature
-            </h3>
-            <p className="text-slate-600">
-              Choose a review that will be naturally embedded in your blog content
-            </p>
+      {/* Step 1: Blog Topic */}
+      {currentStep === 1 && (
+        <Card className="p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Sparkles className="w-5 h-5 text-blue-600" />
+            <h3 className="text-lg font-semibold text-slate-900">Step 1: Blog Topic</h3>
           </div>
 
           <div className="space-y-4">
-            {mockReviews.map((review) => (
-              <div
-                key={review.id}
-                onClick={() => setSelectedReview(review)}
-                className={`p-6 rounded-xl border-2 cursor-pointer transition-all hover:shadow-md ${
-                  selectedReview?.id === review.id
-                    ? 'border-purple-500 bg-purple-50'
-                    : 'border-slate-200 hover:border-purple-300'
-                }`}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="font-bold text-slate-900">{review.author}</span>
-                      <div className="flex gap-0.5">
-                        {[...Array(review.rating)].map((_, i) => (
-                          <span key={i} className="text-yellow-400">⭐</span>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                H1 Title *
+              </label>
+              <Input
+                value={h1}
+                onChange={(e) => setH1(e.target.value)}
+                placeholder="How Often Should You Rotate Your Tires?"
+                className="w-full"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                H2 Subtitle *
+              </label>
+              <Input
+                value={h2}
+                onChange={(e) => setH2(e.target.value)}
+                placeholder="Expert tire rotation advice for Miami drivers"
+                className="w-full"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Target Keywords * (at least 3)
+              </label>
+              <div className="flex gap-2 mb-2">
+                <Input
+                  value={keywordInput}
+                  onChange={(e) => setKeywordInput(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addKeyword())}
+                  placeholder="tire rotation Miami"
+                  className="flex-1"
+                />
+                <Button onClick={addKeyword} disabled={keywords.length >= 10}>
+                  Add
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {keywords.map((keyword, index) => (
+                  <Badge key={index} variant="secondary" className="flex items-center gap-1">
+                    {keyword}
+                    <button onClick={() => removeKeyword(index)} className="ml-1">×</button>
+                  </Badge>
+                ))}
+              </div>
+              <p className="text-xs text-slate-500 mt-2">
+                Added {keywords.length} of 10 keywords
+              </p>
+            </div>
+
+            <Button 
+              onClick={() => setCurrentStep(2)} 
+              disabled={!canProceedFromStep1}
+              className="w-full"
+            >
+              Next: Select Reviews <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* Step 2: Review Selection */}
+      {currentStep === 2 && (
+        <Card className="p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <MessageSquare className="w-5 h-5 text-purple-600" />
+            <h3 className="text-lg font-semibold text-slate-900">Step 2: Select 3 Reviews</h3>
+            <Badge variant="secondary">{selectedReviews.length}/3 selected</Badge>
+          </div>
+
+          {fiveStarReviews.length === 0 ? (
+            <div className="text-center py-8">
+              <AlertCircle className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+              <p className="text-slate-600">No 5-star reviews available for this company.</p>
+            </div>
+          ) : (
+            <div className="space-y-3 mb-4">
+              {fiveStarReviews.slice(0, 10).map((review) => (
+                <div
+                  key={review.id}
+                  onClick={() => toggleReview(review)}
+                  className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                    selectedReviews.find(r => r.id === review.id)
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-slate-900">{review.author}</span>
+                      <div className="flex">
+                        {[...Array(5)].map((_, i) => (
+                          <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />
                         ))}
                       </div>
                     </div>
-                    <p className="text-slate-700 italic">"{review.text}"</p>
+                    {selectedReviews.find(r => r.id === review.id) && (
+                      <CheckCircle className="w-5 h-5 text-blue-600" />
+                    )}
                   </div>
-                  {selectedReview?.id === review.id && (
-                    <CheckCircle className="w-6 h-6 text-purple-600 flex-shrink-0" />
-                  )}
+                  <p className="text-sm text-slate-600 line-clamp-2">{review.text}</p>
+                  <p className="text-xs text-slate-400 mt-1">{review.platform}</p>
                 </div>
-                <span className="text-xs text-slate-500">{review.date}</span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
 
-          <div className="flex gap-3 pt-6">
-            <button
-              onClick={() => setStep(1)}
-              className="px-6 py-3 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 font-semibold transition-all"
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setCurrentStep(1)} className="flex-1">
+              <ArrowLeft className="w-4 h-4 mr-2" /> Back
+            </Button>
+            <Button 
+              onClick={() => setCurrentStep(3)} 
+              disabled={!canProceedFromStep2}
+              className="flex-1"
             >
-              ← Back
-            </button>
-            
-            <button
-              onClick={() => setStep(3)}
-              disabled={!selectedReview}
-              className="px-8 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex-1"
-            >
-              Continue to Images →
-            </button>
+              Next: Select Images <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
           </div>
-        </div>
+        </Card>
       )}
 
-      {/* Step 3: Image Selection */}
-      {step === 3 && (
-        <div className="bg-white rounded-xl border-2 border-slate-200 p-8">
-          <div className="mb-8">
-            <h3 className="text-2xl font-bold text-slate-900 mb-3">
-              Select Images for Your Blog
-            </h3>
-            <p className="text-slate-600">
-              Choose 3 images that AI will reference naturally in the content
-            </p>
-            <div className="mt-3 text-sm text-slate-500">
-              Selected: {selectedImages.length}/3 images
-            </div>
+      {/* Step 3: Image Selection + Alt Text */}
+      {currentStep === 3 && (
+        <Card className="p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <ImageIcon className="w-5 h-5 text-green-600" />
+            <h3 className="text-lg font-semibold text-slate-900">Step 3: Select 3 Images</h3>
+            <Badge variant="secondary">{selectedImages.length}/3 selected</Badge>
           </div>
 
-          <div className="grid grid-cols-4 gap-4 mb-6">
-            {mockImages.map((img) => {
-              const isSelected = selectedImages.find(i => i.id === img.id);
-              return (
-                <div
-                  key={img.id}
-                  onClick={() => {
-                    if (isSelected) {
-                      setSelectedImages(selectedImages.filter(i => i.id !== img.id));
-                    } else if (selectedImages.length < 3) {
-                      setSelectedImages([...selectedImages, img]);
-                    }
-                  }}
-                  className={`relative aspect-square rounded-lg border-2 cursor-pointer transition-all hover:shadow-lg overflow-hidden ${
-                    isSelected
-                      ? 'border-purple-500 ring-4 ring-purple-200'
-                      : 'border-slate-200 hover:border-purple-300'
-                  } ${selectedImages.length >= 3 && !isSelected ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  <div className="absolute inset-0 bg-gradient-to-br from-slate-200 to-slate-300 flex items-center justify-center">
-                    <Image className="w-12 h-12 text-slate-400" />
-                  </div>
-                  <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white p-2 text-xs font-medium">
-                    {img.title}
-                  </div>
-                  {isSelected && (
-                    <div className="absolute top-2 right-2 bg-purple-600 text-white rounded-full p-1">
-                      <CheckCircle className="w-5 h-5" />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="flex gap-3">
-            <button
-              onClick={() => setStep(2)}
-              className="px-6 py-3 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 font-semibold transition-all"
-            >
-              ← Back
-            </button>
-            
-            <button
-              onClick={() => setStep(4)}
-              disabled={selectedImages.length !== 3}
-              className="px-8 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex-1"
-            >
-              Continue to Generate →
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Step 4: Generate Blog */}
-      {step === 4 && (
-        <div className="bg-white rounded-xl border-2 border-slate-200 p-8">
-          <div className="text-center py-12">
-            <Sparkles className="w-20 h-20 text-purple-400 mx-auto mb-6 animate-pulse" />
-            
-            <h3 className="text-2xl font-bold text-slate-900 mb-4">
-              Ready to Generate Your Blog
-            </h3>
-            
-            <div className="max-w-2xl mx-auto mb-8 space-y-3 text-left bg-slate-50 rounded-lg p-6">
-              <div className="flex items-start gap-3">
-                <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-semibold text-slate-900">Topic:</span>
-                  <span className="text-slate-700 ml-2">{selectedTopic?.h1}</span>
-                </div>
-              </div>
-              
-              <div className="flex items-start gap-3">
-                <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-semibold text-slate-900">Review:</span>
-                  <span className="text-slate-700 ml-2">"{selectedReview?.text}"</span>
-                </div>
-              </div>
-              
-              <div className="flex items-start gap-3">
-                <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-semibold text-slate-900">Images:</span>
-                  <span className="text-slate-700 ml-2">{selectedImages.length} selected</span>
-                </div>
-              </div>
+          {availableImages.length === 0 ? (
+            <div className="text-center py-8">
+              <AlertCircle className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+              <p className="text-slate-600">No images available in Media Gallery.</p>
             </div>
-
-            <button
-              onClick={generateBlog}
-              disabled={generating}
-              className="px-12 py-4 bg-purple-600 text-white rounded-xl hover:bg-purple-700 font-bold text-lg shadow-lg hover:shadow-xl transition-all disabled:opacity-50"
-            >
-              {generating ? (
-                <>
-                  <Loader2 className="w-6 h-6 animate-spin inline mr-3" />
-                  AI is writing your blog...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-6 h-6 inline mr-3" />
-                  Generate Blog with AI
-                </>
-              )}
-            </button>
-
-            {generating && (
-              <div className="mt-8 space-y-2 text-sm text-slate-600">
-                <div className="flex items-center justify-center gap-2">
-                  <div className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" />
-                  <span>Analyzing company data...</span>
-                </div>
-                <div className="flex items-center justify-center gap-2">
-                  <div className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-                  <span>Writing 1000-word blog...</span>
-                </div>
-                <div className="flex items-center justify-center gap-2">
-                  <div className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
-                  <span>Embedding review naturally...</span>
-                </div>
-                <div className="flex items-center justify-center gap-2">
-                  <div className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '0.6s' }} />
-                  <span>Generating FAQs with location keywords...</span>
-                </div>
-                <div className="flex items-center justify-center gap-2">
-                  <div className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '0.8s' }} />
-                  <span>Optimizing for SEO & AI discovery...</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="flex gap-3">
-            <button
-              onClick={() => setStep(3)}
-              disabled={generating}
-              className="px-6 py-3 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 font-semibold transition-all disabled:opacity-50"
-            >
-              ← Back
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Step 5: Edit & Publish */}
-      {step === 5 && (
-        <div className="space-y-6">
-          {/* SEO Score Card */}
-          <div className="bg-white rounded-xl border-2 border-slate-200 p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900 mb-1">SEO/GEO Optimization Score</h3>
-                <p className="text-sm text-slate-600">Your blog is ready for review</p>
-              </div>
-              
-              <div className="text-right">
-                <div className={`text-5xl font-bold mb-1 ${seoScore >= 90 ? 'text-green-600' : seoScore >= 70 ? 'text-yellow-600' : 'text-red-600'}`}>
-                  {seoScore}
-                </div>
-                <div className="text-sm text-slate-500 font-medium">out of 100</div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-4 gap-4 mt-6">
-              <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
-                <div className="text-2xl font-bold text-green-600 mb-1">28/30</div>
-                <div className="text-xs text-green-700 font-medium">GEO/Local</div>
-              </div>
-              <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
-                <div className="text-2xl font-bold text-green-600 mb-1">23/25</div>
-                <div className="text-xs text-green-700 font-medium">Structure</div>
-              </div>
-              <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
-                <div className="text-2xl font-bold text-green-600 mb-1">24/25</div>
-                <div className="text-xs text-green-700 font-medium">AI Discovery</div>
-              </div>
-              <div className="text-center p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-                <div className="text-2xl font-bold text-yellow-600 mb-1">18/20</div>
-                <div className="text-xs text-yellow-700 font-medium">Engagement</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Blog Content */}
-          <div className="bg-white rounded-xl border-2 border-slate-200 p-8">
-            <div className="mb-6">
-              <label className="block text-sm font-bold text-slate-700 mb-2">H1 Title</label>
-              <input
-                type="text"
-                value={blogContent.h1}
-                onChange={(e) => setBlogContent({ ...blogContent, h1: e.target.value })}
-                className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg text-lg font-bold focus:border-purple-500 focus:outline-none"
-              />
-            </div>
-
-            <div className="mb-6">
-              <label className="block text-sm font-bold text-slate-700 mb-2">H2 Subtitle</label>
-              <input
-                type="text"
-                value={blogContent.h2}
-                onChange={(e) => setBlogContent({ ...blogContent, h2: e.target.value })}
-                className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:border-purple-500 focus:outline-none"
-              />
-            </div>
-
-            <div className="mb-6">
-              <label className="block text-sm font-bold text-slate-700 mb-2">Blog Content</label>
-              <div className="border-2 border-slate-200 rounded-lg p-4 min-h-[400px] prose max-w-none"
-                   dangerouslySetInnerHTML={{ __html: blogContent.content }}
-              />
-              <p className="text-xs text-slate-500 mt-2">Rich text editor will be added in next iteration</p>
-            </div>
-
-            <div className="mb-6">
-              <label className="block text-sm font-bold text-slate-700 mb-2">FAQs ({blogContent.faqs.length})</label>
-              <div className="space-y-3">
-                {blogContent.faqs.map((faq: any, i: number) => (
-                  <div key={i} className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                    <div className="font-semibold text-slate-900 mb-1">{faq.q}</div>
-                    <div className="text-slate-700 text-sm">{faq.a}</div>
+          ) : (
+            <>
+              {/* Image Grid */}
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                {availableImages.slice(0, 12).map((url, index) => (
+                  <div
+                    key={index}
+                    onClick={() => toggleImage(url)}
+                    className={`relative aspect-square rounded-lg overflow-hidden cursor-pointer border-4 transition-all ${
+                      selectedImages.includes(url)
+                        ? 'border-blue-500 ring-2 ring-blue-500'
+                        : 'border-transparent hover:border-slate-300'
+                    }`}
+                  >
+                    <img 
+                      src={url} 
+                      alt={`Gallery ${index + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                    {selectedImages.includes(url) && (
+                      <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-1">
+                        <CheckCircle className="w-5 h-5" />
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
+
+              {/* Alt Text Input (shows when 3 images selected) */}
+              {selectedImages.length === 3 && (
+                <div className="space-y-4 pt-4 border-t">
+                  <h4 className="font-medium text-slate-900">Add Alt Text for Selected Images</h4>
+                  {selectedImages.map((url, index) => (
+                    <div key={url} className="flex gap-4">
+                      <img 
+                        src={url} 
+                        alt={`Selected ${index + 1}`}
+                        className="w-20 h-20 object-cover rounded border"
+                      />
+                      <div className="flex-1">
+                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                          Image {index + 1} Alt Text *
+                        </label>
+                        <Input
+                          value={imageAltTexts[url] || ''}
+                          onChange={(e) => setImageAltTexts({ ...imageAltTexts, [url]: e.target.value })}
+                          placeholder={`${company.name} professional service in ${company.city}`}
+                          className="w-full"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          <div className="flex gap-2 mt-6">
+            <Button variant="outline" onClick={() => setCurrentStep(2)} className="flex-1">
+              <ArrowLeft className="w-4 h-4 mr-2" /> Back
+            </Button>
+            <Button 
+              onClick={() => setCurrentStep(4)} 
+              disabled={!canProceedFromStep3}
+              className="flex-1"
+            >
+              Next: Generate Blog <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* Step 4: Generate Blog */}
+      {currentStep === 4 && (
+        <Card className="p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Sparkles className="w-5 h-5 text-yellow-600" />
+            <h3 className="text-lg font-semibold text-slate-900">Step 4: Generate Blog</h3>
+          </div>
+
+          <div className="space-y-4">
+            <div className="bg-slate-50 p-4 rounded-lg space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-slate-700">Topic:</span>
+                <span className="text-sm text-slate-900">{h1}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-slate-700">Reviews:</span>
+                <span className="text-sm text-slate-900">{selectedReviews.length} selected</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-slate-700">Images:</span>
+                <span className="text-sm text-slate-900">{selectedImages.length} selected</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-slate-700">Keywords:</span>
+                <span className="text-sm text-slate-900">{keywords.length} keywords</span>
+              </div>
             </div>
 
-            <div className="flex gap-3">
-              <button
-                onClick={() => setStep(4)}
-                className="px-6 py-3 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 font-semibold transition-all"
+            {generationError && (
+              <div className="bg-red-50 border border-red-200 p-3 rounded-lg">
+                <p className="text-sm text-red-600">{generationError}</p>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setCurrentStep(3)} className="flex-1">
+                <ArrowLeft className="w-4 h-4 mr-2" /> Back
+              </Button>
+              <Button 
+                onClick={generateBlog} 
+                disabled={isGenerating}
+                className="flex-1"
               >
-                ← Regenerate
-              </button>
-              
-              <button
-                className="px-8 py-3 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 font-semibold transition-all"
-              >
-                <Eye className="w-4 h-4 inline mr-2" />
-                Preview
-              </button>
-              
-              <button
-                className="px-8 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold transition-all flex-1"
-              >
-                <Send className="w-4 h-4 inline mr-2" />
-                Publish to Webflow
-              </button>
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Generate Blog with AI
+                  </>
+                )}
+              </Button>
             </div>
           </div>
+        </Card>
+      )}
+
+      {/* Step 5: Preview & Publish */}
+      {currentStep === 5 && generatedBlog && (
+        <div className="space-y-6">
+          {/* SEO Score Card */}
+          <Card className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">SEO Score</h3>
+                <p className="text-sm text-slate-600">Overall optimization rating</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="text-4xl font-bold text-blue-600">{seoScore}</div>
+                <TrendingUp className={`w-8 h-8 ${
+                  seoScore >= 90 ? 'text-green-500' :
+                  seoScore >= 70 ? 'text-yellow-500' :
+                  'text-orange-500'
+                }`} />
+              </div>
+            </div>
+          </Card>
+
+          {/* Blog Preview */}
+          <Card className="p-8">
+            {/* Quick Answer */}
+            {generatedBlog.quickAnswer && (
+              <div className="bg-blue-50 border-l-4 border-blue-600 p-4 mb-6">
+                <p className="text-sm font-medium text-blue-900 mb-1">⚡ QUICK ANSWER</p>
+                <p className="text-slate-700">{generatedBlog.quickAnswer}</p>
+              </div>
+            )}
+
+            {/* H1 & H2 */}
+            <h1 className="text-4xl font-bold text-slate-900 mb-3">{h1}</h1>
+            <h2 className="text-xl text-slate-600 mb-6">{h2}</h2>
+
+            {/* Author */}
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold">
+                {selectedAuthor.name.charAt(0)}
+              </div>
+              <div>
+                <p className="font-medium text-slate-900">{selectedAuthor.name}</p>
+                <p className="text-sm text-slate-600">{selectedAuthor.title}</p>
+              </div>
+            </div>
+
+            {/* Key Takeaways */}
+            {generatedBlog.keyTakeaways && generatedBlog.keyTakeaways.length > 0 && (
+              <div className="bg-slate-50 p-6 rounded-lg mb-8">
+                <h3 className="font-semibold text-slate-900 mb-3">📋 KEY TAKEAWAYS</h3>
+                <ul className="space-y-2">
+                  {generatedBlog.keyTakeaways.map((takeaway: string, index: number) => (
+                    <li key={index} className="flex items-start gap-2">
+                      <span className="text-blue-600 mt-1">→</span>
+                      <span className="text-slate-700">{takeaway}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Main Content */}
+            <div 
+              className="prose prose-slate max-w-none mb-8"
+              dangerouslySetInnerHTML={{ __html: generatedBlog.content }}
+            />
+
+            {/* FAQs */}
+            {generatedBlog.faqs && generatedBlog.faqs.length > 0 && (
+              <div className="bg-slate-50 p-6 rounded-lg mb-8">
+                <h3 className="font-semibold text-slate-900 mb-4">❓ Frequently Asked Questions</h3>
+                <div className="space-y-4">
+                  {generatedBlog.faqs.map((faq: any, index: number) => (
+                    <div key={index}>
+                      <p className="font-medium text-slate-900 mb-1">{faq.q}</p>
+                      <p className="text-slate-600 text-sm">{faq.a}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Author Card */}
+            <div className="bg-slate-100 p-6 rounded-lg mb-6">
+              <div className="flex items-start gap-4">
+                <div className="w-16 h-16 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-xl">
+                  {selectedAuthor.name.charAt(0)}
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-semibold text-slate-900 mb-1">{selectedAuthor.name}</h4>
+                  <p className="text-sm text-slate-600 mb-2">{selectedAuthor.title}</p>
+                  <p className="text-sm text-slate-700">{selectedAuthor.bio}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Share Buttons */}
+            <div className="border-t pt-6">
+              <p className="text-sm font-medium text-slate-700 mb-3">Share this article:</p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleShare('twitter')}
+                >
+                  <Twitter className="w-4 h-4 mr-2" />
+                  Twitter
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleShare('facebook')}
+                >
+                  <Facebook className="w-4 h-4 mr-2" />
+                  Facebook
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleShare('linkedin')}
+                >
+                  <Linkedin className="w-4 h-4 mr-2" />
+                  LinkedIn
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={copyLink}
+                >
+                  <LinkIcon className="w-4 h-4 mr-2" />
+                  Copy Link
+                </Button>
+              </div>
+            </div>
+          </Card>
+
+          {/* Author Selection */}
+          <Card className="p-6">
+            <h3 className="font-semibold text-slate-900 mb-4">Select Author</h3>
+            <div className="grid grid-cols-3 gap-4">
+              {AUTHORS.map((author) => (
+                <div
+                  key={author.name}
+                  onClick={() => setSelectedAuthor(author)}
+                  className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                    selectedAuthor.name === author.name
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <p className="font-medium text-slate-900">{author.name}</p>
+                  <p className="text-sm text-slate-600">{author.title}</p>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* Actions */}
+          <Card className="p-6">
+            <div className="flex gap-4">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setCurrentStep(1);
+                  setGeneratedBlog(null);
+                }}
+                className="flex-1"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Start Over
+              </Button>
+              <Button
+                onClick={handleSaveBlog}
+                disabled={isSaving}
+                className="flex-1"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Save Blog (Draft)
+                  </>
+                )}
+              </Button>
+            </div>
+          </Card>
         </div>
       )}
     </div>
