@@ -340,6 +340,51 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
     setViewMode('create');
   };
 
+  // Load Draft into Editor
+  const loadDraft = (blog: Blog) => {
+    // Set the title
+    setSelectedTitle({
+      h1: blog.h1,
+      h2: blog.h2,
+      keywords: blog.keywords || [],
+    });
+
+    // Set generated blog content
+    setGeneratedBlog({
+      quickAnswer: blog.quickAnswer,
+      keyTakeaways: blog.keyTakeaways,
+      content: blog.content,
+      faqs: blog.faqs,
+      metaDescription: blog.metaDescription,
+    });
+
+    // Set selected reviews if available
+    if (blog.selectedReviewIds && blog.selectedReviewIds.length > 0) {
+      const reviewsToLoad = reviews.filter(r => blog.selectedReviewIds?.includes(r.id));
+      setSelectedReviews(reviewsToLoad);
+    }
+
+    // Set selected images if available
+    if (blog.selectedImages && blog.selectedImages.length > 0) {
+      setSelectedImages(blog.selectedImages.map(img => img.url));
+    }
+
+    // Set author
+    const author = AUTHORS.find(a => a.name === blog.authorName);
+    if (author) {
+      setSelectedAuthor(author);
+    }
+
+    // Set SEO score if available
+    if (blog.seoScore) {
+      setSeoScore(blog.seoScore);
+    }
+
+    // Go to preview step
+    setCurrentStep(5);
+    setViewMode('create');
+  };
+
   // DRAFTS LIST VIEW
   if (viewMode === 'list') {
     return (
@@ -393,10 +438,7 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => {
-                          // TODO: Load draft into editor
-                          alert('View/edit draft coming soon!');
-                        }}
+                        onClick={() => loadDraft(blog)}
                       >
                         <Eye className="w-4 h-4 mr-1" />
                         View
