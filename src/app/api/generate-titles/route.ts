@@ -7,7 +7,7 @@ const anthropic = new Anthropic({
 
 export async function POST(request: Request) {
   try {
-    const { company, intake } = await request.json();
+    const { company, intake, context } = await request.json();
 
     const industryCategory = intake?.industryCategory || 'local business';
     const services = intake?.services?.length > 0 
@@ -15,18 +15,31 @@ export async function POST(request: Request) {
       : 'various local services';
     const primaryFocus = intake?.primaryFocus || 'customer satisfaction';
 
-    const prompt = `Generate 5 blog title suggestions for ${company.name} in ${company.city}, ${company.state}.
+    // Build prompt based on whether context is provided
+    let prompt = `Generate 5 blog title suggestions for ${company.name} in ${company.city}, ${company.state}.
 
 Industry: ${industryCategory}
 Services: ${services}
-Focus: ${primaryFocus}
+Focus: ${primaryFocus}`;
 
-For each title, create:
+    // Add context if provided
+    if (context && context.trim()) {
+      prompt += `\n\nADDITIONAL CONTEXT FROM USER:\n${context}\n\nUse this context to create more specific, targeted titles.`;
+    }
+
+    prompt += `\n\nFor each title, create:
 1. H1: Compelling question/statement (8-12 words) including "${company.city}"
 2. H2: Supporting subtitle (10-15 words) including "${company.name}"
 3. Keywords: 4-5 geo-targeted keywords with "${company.city}"
 
-Return ONLY a JSON array, nothing else:
+Requirements:
+- Address common customer pain points
+- Be locally relevant and geo-optimized
+- Include year (2025) when fresh/timely
+- Be compelling and click-worthy
+- Natural use of location (not forced)
+
+Return ONLY a JSON array:
 
 [
   {
@@ -34,7 +47,9 @@ Return ONLY a JSON array, nothing else:
     "h2": "Subtitle here",
     "keywords": ["kw1", "kw2", "kw3", "kw4", "kw5"]
   }
-]`;
+]
+
+Return ONLY the JSON array, no markdown, no explanation.`;
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
@@ -51,7 +66,7 @@ Return ONLY a JSON array, nothing else:
     // Try multiple extraction methods
     let suggestions;
     
-    // Method 1: Direct JSON parse (if Claude returns clean JSON)
+    // Method 1: Direct JSON parse
     try {
       suggestions = JSON.parse(content);
     } catch {
@@ -60,7 +75,7 @@ Return ONLY a JSON array, nothing else:
       if (codeBlockMatch) {
         suggestions = JSON.parse(codeBlockMatch[1]);
       } else {
-        // Method 3: Find any array in the response
+        // Method 3: Find any array in response
         const arrayMatch = content.match(/\[[\s\S]*\]/);
         if (arrayMatch) {
           suggestions = JSON.parse(arrayMatch[0]);

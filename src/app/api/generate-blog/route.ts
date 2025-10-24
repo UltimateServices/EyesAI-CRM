@@ -1,13 +1,8 @@
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
-import OpenAI from 'openai';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
-});
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
 });
 
 export async function POST(request: Request) {
@@ -20,124 +15,186 @@ export async function POST(request: Request) {
       keywords 
     } = await request.json();
 
-    // Step 1: Generate main content with Claude
-    const contentPrompt = `Write a 1000-word blog post for ${company.name}, a business located in ${company.city}, ${company.state}.
+    // Step 1: Generate Quick Answer (50-75 words)
+    const quickAnswerPrompt = `Write a 50-75 word direct answer for: "${topic.h1}"
 
-Topic: ${topic.h1}
-Subtitle: ${topic.h2}
+Context: ${company.name} in ${company.city}, ${company.state}
 
-IMPORTANT CONTEXT TO INTEGRATE:
-1. Featured Reviews (integrate naturally):
-${selectedReviews.map((r: any, i: number) => `   Review ${i + 1}: "${r.text}" - ${r.author}`).join('\n')}
+Write as if answering a voice search. Be concise and specific. Include ${company.city} naturally.
 
-2. Images to Reference (mention these naturally in content):
-${selectedImages.map((img: any, i: number) => `   Image ${i + 1}: ${img.altText}`).join('\n')}
-
-REQUIREMENTS:
-- Conversational, helpful tone (like talking to a friend)
-- Mention ${company.name} 4-5 times naturally throughout
-- Mention ${company.city} 6-8 times naturally throughout
-- Include 4 H3 subheadings with descriptive titles
-- Use short paragraphs (3-4 sentences max)
-- Add 3-4 bullet point lists for scannability
-- Write in second person ("you") when appropriate
-- Use **bold** on 8-10 important keywords naturally
-- Include specific examples and details
-- Natural transitions between sections
-- Integrate the customer reviews organically (don't just drop them in)
-- Reference the images contextually where relevant
-
-TARGET KEYWORDS: ${keywords.join(', ')}
-
-Format as HTML with proper tags: <h3>, <p>, <strong>, <ul>, <li>, <blockquote>
-
-Do NOT include H1 or H2 - those are separate.`;
-
-    const contentResponse = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 4000,
-      messages: [{
-        role: 'user',
-        content: contentPrompt
-      }]
-    });
-
-    const content = contentResponse.content[0].type === 'text' 
-      ? contentResponse.content[0].text 
-      : '';
-
-    // Step 2: Generate FAQs with ChatGPT
-    const faqPrompt = `Based on this blog about ${topic.h1} for ${company.name} in ${company.city}, generate 7 frequently asked questions with concise answers.
-
-Include ${company.city} or ${company.name} in 4-5 of the questions naturally.
-
-Format as JSON array:
-[
-  {"q": "Question here?", "a": "Answer here."},
-  ...
-]`;
-
-    const faqResponse = await openai.chat.completions.create({
-      model: 'gpt-4-turbo-preview',
-      messages: [{
-        role: 'user',
-        content: faqPrompt
-      }],
-      response_format: { type: 'json_object' }
-    });
-
-    const faqsData = JSON.parse(faqResponse.choices[0].message.content || '{"faqs": []}');
-    const faqs = faqsData.faqs || [];
-
-    // Step 3: Generate Quick Answer with Claude
-    const quickAnswerPrompt = `For the blog topic "${topic.h1}", write a single 1-2 sentence direct answer that would be perfect for voice search and featured snippets. Be concise and specific. Include ${company.city} naturally.`;
+Return ONLY the answer text, no extra formatting.`;
 
     const quickAnswerResponse = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 150,
-      messages: [{
-        role: 'user',
-        content: quickAnswerPrompt
-      }]
+      messages: [{ role: 'user', content: quickAnswerPrompt }]
     });
 
     const quickAnswer = quickAnswerResponse.content[0].type === 'text'
-      ? quickAnswerResponse.content[0].text
+      ? quickAnswerResponse.content[0].text.trim()
       : '';
 
-    // Step 4: Generate Key Takeaways
-    const takeawaysPrompt = `From this blog content, extract exactly 5 key takeaways as bullet points. Each should be one line. Include ${company.name} and ${company.city} in 2-3 of them naturally.
+    // Step 2: Generate 5 Key Takeaways
+    const takeawaysPrompt = `Generate exactly 5 key takeaways for: "${topic.h1}" for ${company.name} in ${company.city}.
 
-Content: ${content.substring(0, 500)}...
+Requirements:
+- Each is one concise sentence
+- Include ${company.name} or ${company.city} in 2-3 of them
+- Focus on actionable insights
 
-Format as JSON array of strings: ["takeaway 1", "takeaway 2", ...]`;
+Return as JSON array: ["takeaway 1", "takeaway 2", "takeaway 3", "takeaway 4", "takeaway 5"]
+
+Return ONLY the JSON array.`;
 
     const takeawaysResponse = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 300,
-      messages: [{
-        role: 'user',
-        content: takeawaysPrompt
-      }]
+      messages: [{ role: 'user', content: takeawaysPrompt }]
     });
 
     const takeawaysText = takeawaysResponse.content[0].type === 'text'
-      ? takeawaysResponse.content[0].text
+      ? takeawaysResponse.content[0].text.trim()
       : '[]';
     
-    // Extract JSON from response - FIXED REGEX
-    const takeawaysMatch = takeawaysText.match(/\[[\s\S]*\]/);
-    const keyTakeaways = takeawaysMatch ? JSON.parse(takeawaysMatch[0]) : [];
+    let keyTakeaways = [];
+    try {
+      const match = takeawaysText.match(/\[[\s\S]*\]/);
+      keyTakeaways = match ? JSON.parse(match[0]) : [];
+    } catch {
+      keyTakeaways = [];
+    }
 
-    // Step 5: Generate Meta Description
-    const metaDescription = `${quickAnswer.substring(0, 150)}...`.replace(/\n/g, ' ');
+    // Step 3: Generate Main Content (1500-1800 words with 5-6 H3 sections)
+    const contentPrompt = `Write a 1500-1800 word blog post for ${company.name} in ${company.city}, ${company.state}.
 
+H1: ${topic.h1}
+H2: ${topic.h2}
+
+STRUCTURE (CRITICAL):
+1. Introduction paragraph (150 words)
+2. EXACTLY 5-6 H3 sections (each 250-300 words)
+3. Conclusion paragraph (150 words) with call-to-action
+
+CONTENT REQUIREMENTS:
+- Mention ${company.name} exactly 4-5 times naturally throughout
+- Mention ${company.city} exactly 6-8 times naturally throughout
+- Use conversational, helpful tone (second person "you" when appropriate)
+- Short paragraphs (3-4 sentences max)
+- Include 3-4 bullet lists using <ul><li> tags
+- Use <strong> tags on 8-10 important keywords
+- Target keywords: ${keywords.join(', ')}
+
+CUSTOMER REVIEWS TO INTEGRATE:
+${selectedReviews.map((r: any, i: number) => `
+Review ${i + 1}: "${r.text}" - ${r.author}
+`).join('\n')}
+
+Integrate these reviews naturally as <blockquote> tags with attribution in relevant H3 sections.
+
+IMAGES TO INSERT:
+Image 1: ${selectedImages[0]?.url || 'placeholder'}
+Alt: ${selectedImages[0]?.altText || 'Image 1'}
+
+Image 2: ${selectedImages[1]?.url || 'placeholder'}
+Alt: ${selectedImages[1]?.altText || 'Image 2'}
+
+Image 3: ${selectedImages[2]?.url || 'placeholder'}
+Alt: ${selectedImages[2]?.altText || 'Image 3'}
+
+INSERT IMAGES using this EXACT format in relevant H3 sections (after the section where they fit best):
+
+<div class="my-8">
+  <img src="${selectedImages[0]?.url}" alt="${selectedImages[0]?.altText}" class="w-full rounded-lg shadow-lg" />
+</div>
+
+Spread the 3 images across 3 different H3 sections naturally.
+
+HTML TAGS TO USE:
+- <p> for paragraphs
+- <h3> for section headers (5-6 total)
+- <strong> for emphasis
+- <ul><li> for bullet lists
+- <blockquote class="border-l-4 border-blue-500 pl-4 italic my-4"> for reviews
+- <div class="my-8"><img> for images
+
+DO NOT include H1, H2, or any wrapper divs. Start with introduction <p> tag.
+
+Return ONLY the HTML content.`;
+
+    const contentResponse = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 5000,
+      messages: [{ role: 'user', content: contentPrompt }]
+    });
+
+    const content = contentResponse.content[0].type === 'text'
+      ? contentResponse.content[0].text.trim()
+      : '';
+
+    // Step 4: Generate 5-7 FAQs
+    const faqPrompt = `Generate 5-7 frequently asked questions and answers for: "${topic.h1}"
+
+Context: ${company.name} in ${company.city}, ${company.state}
+Keywords: ${keywords.join(', ')}
+
+Requirements:
+- Questions should be common customer queries
+- Answers should be 2-3 sentences
+- Include ${company.name} or ${company.city} naturally in 3-4 answers
+- Cover different aspects of the topic
+
+Return as JSON array:
+[
+  {"q": "Question 1?", "a": "Answer 1"},
+  {"q": "Question 2?", "a": "Answer 2"},
+  ...
+]
+
+Return ONLY the JSON array.`;
+
+    const faqResponse = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1500,
+      messages: [{ role: 'user', content: faqPrompt }]
+    });
+
+    const faqText = faqResponse.content[0].type === 'text'
+      ? faqResponse.content[0].text.trim()
+      : '[]';
+    
+    let faqs = [];
+    try {
+      const match = faqText.match(/\[[\s\S]*\]/);
+      faqs = match ? JSON.parse(match[0]) : [];
+    } catch {
+      faqs = [];
+    }
+
+    // Step 5: Generate Meta Description (150-155 characters)
+    const metaPrompt = `Write a 150-155 character meta description for: "${topic.h1}"
+
+Include: ${company.name}, ${company.city}, and main benefit.
+Make it compelling for search results.
+
+Return ONLY the meta description text.`;
+
+    const metaResponse = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 100,
+      messages: [{ role: 'user', content: metaPrompt }]
+    });
+
+    const metaDescription = metaResponse.content[0].type === 'text'
+      ? metaResponse.content[0].text.trim()
+      : '';
+
+    // Return complete blog
     return NextResponse.json({
-      content,
-      faqs,
       quickAnswer,
       keyTakeaways,
-      metaDescription
+      content,
+      faqs,
+      metaDescription,
     });
 
   } catch (error: any) {
