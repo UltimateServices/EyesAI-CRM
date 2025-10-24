@@ -24,7 +24,8 @@ import {
   Plus,
   Eye,
   Trash2,
-  Search
+  Search,
+  X
 } from 'lucide-react';
 
 interface BlogBuilderProps {
@@ -112,6 +113,7 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
   const [seoScore, setSeoScore] = useState<number | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [showScoreBreakdown, setShowScoreBreakdown] = useState(false);
 
   // Calculate recommended reviews
   useEffect(() => {
@@ -332,6 +334,7 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
     setSelectedImages([]);
     setGeneratedBlog(null);
     setSeoScore(null);
+    setShowScoreBreakdown(false);
   };
 
   // Start New Blog
@@ -342,14 +345,12 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
 
   // Load Draft into Editor
   const loadDraft = (blog: Blog) => {
-    // Set the title
     setSelectedTitle({
       h1: blog.h1,
       h2: blog.h2,
       keywords: blog.keywords || [],
     });
 
-    // Set generated blog content
     setGeneratedBlog({
       quickAnswer: blog.quickAnswer,
       keyTakeaways: blog.keyTakeaways,
@@ -358,29 +359,24 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
       metaDescription: blog.metaDescription,
     });
 
-    // Set selected reviews if available
     if (blog.selectedReviewIds && blog.selectedReviewIds.length > 0) {
       const reviewsToLoad = reviews.filter(r => blog.selectedReviewIds?.includes(r.id));
       setSelectedReviews(reviewsToLoad);
     }
 
-    // Set selected images if available
     if (blog.selectedImages && blog.selectedImages.length > 0) {
       setSelectedImages(blog.selectedImages.map(img => img.url));
     }
 
-    // Set author
     const author = AUTHORS.find(a => a.name === blog.authorName);
     if (author) {
       setSelectedAuthor(author);
     }
 
-    // Set SEO score if available
     if (blog.seoScore) {
       setSeoScore(blog.seoScore);
     }
 
-    // Go to preview step
     setCurrentStep(5);
     setViewMode('create');
   };
@@ -844,18 +840,27 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
               </div>
               <div className="flex items-center gap-4">
                 {seoScore !== null ? (
-                  <div className="flex items-center gap-3">
-                    <div className={`text-5xl font-bold ${
-                      seoScore >= 90 ? 'text-green-500' :
-                      seoScore >= 70 ? 'text-yellow-500' :
-                      'text-orange-500'
-                    }`}>{seoScore}</div>
-                    <TrendingUp className={`w-10 h-10 ${
-                      seoScore >= 90 ? 'text-green-500' :
-                      seoScore >= 70 ? 'text-yellow-500' :
-                      'text-orange-500'
-                    }`} />
-                  </div>
+                  <>
+                    <div className="flex items-center gap-3">
+                      <div className={`text-5xl font-bold ${
+                        seoScore >= 90 ? 'text-green-500' :
+                        seoScore >= 70 ? 'text-yellow-500' :
+                        'text-orange-500'
+                      }`}>{seoScore}</div>
+                      <TrendingUp className={`w-10 h-10 ${
+                        seoScore >= 90 ? 'text-green-500' :
+                        seoScore >= 70 ? 'text-yellow-500' :
+                        'text-orange-500'
+                      }`} />
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowScoreBreakdown(true)}
+                    >
+                      View Breakdown
+                    </Button>
+                  </>
                 ) : (
                   <Button
                     onClick={scanSEOScore}
@@ -879,6 +884,177 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
               </div>
             </div>
           </Card>
+
+          {/* Score Breakdown Modal */}
+          {showScoreBreakdown && seoScore !== null && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <Card className="max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                <div className="p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-2xl font-bold text-slate-900">SEO Score Breakdown</h3>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowScoreBreakdown(false)}
+                    >
+                      <X className="w-5 h-5" />
+                    </Button>
+                  </div>
+
+                  <div className="space-y-6">
+                    {/* Overall Score */}
+                    <div className="text-center p-6 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl">
+                      <p className="text-sm text-slate-600 mb-2">Total Score</p>
+                      <p className={`text-6xl font-bold ${
+                        seoScore >= 90 ? 'text-green-500' :
+                        seoScore >= 70 ? 'text-yellow-500' :
+                        'text-orange-500'
+                      }`}>{seoScore}/100</p>
+                    </div>
+
+                    {/* GEO/Local (30 points) */}
+                    <div className="border-2 border-slate-200 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="font-semibold text-slate-900">🌎 GEO/Local Optimization</h4>
+                        <span className="text-lg font-bold text-blue-600">
+                          {Math.min(
+                            Math.min((generatedBlog.content.match(new RegExp(company.name, 'gi')) || []).length * 5, 15) +
+                            Math.min((generatedBlog.content.match(new RegExp(company.city || '', 'gi')) || []).length * 2.5, 15),
+                            30
+                          )}/30
+                        </span>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-slate-600">Company mentions ({company.name}):</span>
+                          <span className="font-medium">
+                            {(generatedBlog.content.match(new RegExp(company.name, 'gi')) || []).length} times
+                            ({Math.min((generatedBlog.content.match(new RegExp(company.name, 'gi')) || []).length * 5, 15)}/15 pts)
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-600">City mentions ({company.city}):</span>
+                          <span className="font-medium">
+                            {(generatedBlog.content.match(new RegExp(company.city || '', 'gi')) || []).length} times
+                            ({Math.min((generatedBlog.content.match(new RegExp(company.city || '', 'gi')) || []).length * 2.5, 15)}/15 pts)
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Structure (25 points) */}
+                    <div className="border-2 border-slate-200 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="font-semibold text-slate-900">📐 Content Structure</h4>
+                        <span className="text-lg font-bold text-purple-600">
+                          {Math.min((generatedBlog.content.match(/<h3>/g) || []).length * 2, 10) +
+                           (generatedBlog.content.includes('<ul>') ? 8 : 0) +
+                           (selectedImages.length === 3 ? 7 : 0)}/25
+                        </span>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-slate-600">H3 sections (need 5-6):</span>
+                          <span className="font-medium">
+                            {(generatedBlog.content.match(/<h3>/g) || []).length} sections
+                            ({Math.min((generatedBlog.content.match(/<h3>/g) || []).length * 2, 10)}/10 pts)
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-600">Bullet lists:</span>
+                          <span className="font-medium">
+                            {generatedBlog.content.includes('<ul>') ? '✓ Yes' : '✗ No'}
+                            ({generatedBlog.content.includes('<ul>') ? '8' : '0'}/8 pts)
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-600">Images included:</span>
+                          <span className="font-medium">
+                            {selectedImages.length}/3
+                            ({selectedImages.length === 3 ? '7' : '0'}/7 pts)
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* AI Discovery (25 points) */}
+                    <div className="border-2 border-slate-200 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="font-semibold text-slate-900">🤖 AI Discovery</h4>
+                        <span className="text-lg font-bold text-green-600">
+                          {(generatedBlog.faqs && generatedBlog.faqs.length >= 5 ? 10 : 0) +
+                           (generatedBlog.quickAnswer ? 8 : 0) +
+                           (generatedBlog.keyTakeaways && generatedBlog.keyTakeaways.length >= 4 ? 7 : 0)}/25
+                        </span>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-slate-600">FAQs (need 5+):</span>
+                          <span className="font-medium">
+                            {generatedBlog.faqs?.length || 0} FAQs
+                            ({generatedBlog.faqs && generatedBlog.faqs.length >= 5 ? '10' : '0'}/10 pts)
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-600">Quick Answer:</span>
+                          <span className="font-medium">
+                            {generatedBlog.quickAnswer ? '✓ Yes' : '✗ No'}
+                            ({generatedBlog.quickAnswer ? '8' : '0'}/8 pts)
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-600">Key Takeaways (need 4+):</span>
+                          <span className="font-medium">
+                            {generatedBlog.keyTakeaways?.length || 0} takeaways
+                            ({generatedBlog.keyTakeaways && generatedBlog.keyTakeaways.length >= 4 ? '7' : '0'}/7 pts)
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Engagement (20 points) */}
+                    <div className="border-2 border-slate-200 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="font-semibold text-slate-900">💬 Engagement</h4>
+                        <span className="text-lg font-bold text-orange-600">
+                          {(selectedReviews.length === 3 ? 10 : 0) + (selectedTitle ? 5 : 0) + 5}/20
+                        </span>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-slate-600">Customer reviews:</span>
+                          <span className="font-medium">
+                            {selectedReviews.length}/3 reviews
+                            ({selectedReviews.length === 3 ? '10' : '0'}/10 pts)
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-600">Target keywords:</span>
+                          <span className="font-medium">
+                            {selectedTitle ? '✓ Yes' : '✗ No'}
+                            ({selectedTitle ? '5' : '0'}/5 pts)
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-600">CTAs included:</span>
+                          <span className="font-medium">✓ Yes (5/5 pts)</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 pt-6 border-t">
+                    <Button
+                      onClick={() => setShowScoreBreakdown(false)}
+                      className="w-full"
+                    >
+                      Close
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          )}
 
           {/* Blog Preview - Styled like real blog */}
           <Card className="p-0 overflow-hidden">
