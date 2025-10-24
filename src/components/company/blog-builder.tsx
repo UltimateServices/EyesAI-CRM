@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useStore } from '@/lib/store';
-import { Company, Review } from '@/lib/types';
+import { Company, Review, Blog } from '@/lib/types';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import { 
   Sparkles, 
   Image as ImageIcon, 
@@ -18,7 +19,12 @@ import {
   Star,
   TrendingUp,
   Save,
-  Share2
+  Share2,
+  FileText,
+  Plus,
+  Eye,
+  Trash2,
+  Search
 } from 'lucide-react';
 
 interface BlogBuilderProps {
@@ -58,22 +64,31 @@ const AUTHORS = [
 export default function BlogBuilder({ company }: BlogBuilderProps) {
   const getIntakeByCompanyId = useStore((state) => state.getIntakeByCompanyId);
   const reviews = useStore((state) => state.reviews);
+  const blogs = useStore((state) => state.blogs);
   const fetchReviews = useStore((state) => state.fetchReviews);
+  const fetchBlogs = useStore((state) => state.fetchBlogs);
   const saveBlog = useStore((state) => state.saveBlog);
+  const deleteBlog = useStore((state) => state.deleteBlog);
 
   const intake = getIntakeByCompanyId(company.id);
   const companyReviews = reviews.filter((r) => r.companyId === company.id);
   const fiveStarReviews = companyReviews.filter((r) => r.rating === 5);
+  const companyBlogs = blogs.filter((b) => b.companyId === company.id);
 
-  // Load reviews on mount
+  // View mode
+  const [viewMode, setViewMode] = useState<'list' | 'create'>('list');
+
+  // Load data on mount
   useEffect(() => {
     fetchReviews();
-  }, [fetchReviews]);
+    fetchBlogs();
+  }, [fetchReviews, fetchBlogs]);
 
   // Step management
   const [currentStep, setCurrentStep] = useState(1);
 
-  // Step 1: Title Suggestions
+  // Step 1: Title Context & Suggestions
+  const [titleContext, setTitleContext] = useState('');
   const [titleSuggestions, setTitleSuggestions] = useState<TitleSuggestion[]>([]);
   const [selectedTitle, setSelectedTitle] = useState<TitleSuggestion | null>(null);
   const [generatingTitles, setGeneratingTitles] = useState(false);
@@ -94,10 +109,11 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
   // Step 5: Generated Blog
   const [generatedBlog, setGeneratedBlog] = useState<any>(null);
   const [selectedAuthor, setSelectedAuthor] = useState(AUTHORS[0]);
-  const [seoScore, setSeoScore] = useState(0);
+  const [seoScore, setSeoScore] = useState<number | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Calculate recommended reviews (top 3 longest)
+  // Calculate recommended reviews
   useEffect(() => {
     if (fiveStarReviews.length > 0) {
       const sorted = [...fiveStarReviews].sort((a, b) => b.text.length - a.text.length);
@@ -124,7 +140,8 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
             services: intake?.services || [],
             industryCategory: intake?.industryCategory,
             primaryFocus: intake?.primaryFocus,
-          }
+          },
+          context: titleContext || null,
         }),
       });
 
@@ -162,35 +179,42 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
     }
   };
 
-  // Calculate SEO Score
-  const calculateSEOScore = (blog: any) => {
-    let score = 0;
+  // Scan for SEO Score
+  const scanSEOScore = () => {
+    if (!generatedBlog) return;
 
-    // GEO/Local (30 points)
-    const companyMentions = (blog.content.match(new RegExp(company.name, 'gi')) || []).length;
-    const locationMentions = (blog.content.match(new RegExp(company.city || '', 'gi')) || []).length;
-    score += Math.min(companyMentions * 5, 15);
-    score += Math.min(locationMentions * 2.5, 15);
+    setIsScanning(true);
+    
+    setTimeout(() => {
+      let score = 0;
 
-    // Structure (25 points)
-    const h3Count = (blog.content.match(/<h3>/g) || []).length;
-    const hasBullets = blog.content.includes('<ul>') ? 8 : 0;
-    const hasImages = selectedImages.length === 3 ? 7 : 0;
-    score += Math.min(h3Count * 2, 10) + hasBullets + hasImages;
+      // GEO/Local (30 points)
+      const companyMentions = (generatedBlog.content.match(new RegExp(company.name, 'gi')) || []).length;
+      const locationMentions = (generatedBlog.content.match(new RegExp(company.city || '', 'gi')) || []).length;
+      score += Math.min(companyMentions * 5, 15);
+      score += Math.min(locationMentions * 2.5, 15);
 
-    // AI Discovery (25 points)
-    const hasFAQs = blog.faqs && blog.faqs.length >= 5 ? 10 : 0;
-    const hasQuickAnswer = blog.quickAnswer ? 8 : 0;
-    const hasTakeaways = blog.keyTakeaways && blog.keyTakeaways.length >= 4 ? 7 : 0;
-    score += hasFAQs + hasQuickAnswer + hasTakeaways;
+      // Structure (25 points)
+      const h3Count = (generatedBlog.content.match(/<h3>/g) || []).length;
+      const hasBullets = generatedBlog.content.includes('<ul>') ? 8 : 0;
+      const hasImages = selectedImages.length === 3 ? 7 : 0;
+      score += Math.min(h3Count * 2, 10) + hasBullets + hasImages;
 
-    // Engagement (20 points)
-    const hasReviews = selectedReviews.length === 3 ? 10 : 0;
-    const hasKeywords = selectedTitle ? 5 : 0;
-    const hasCTAs = 5;
-    score += hasReviews + hasKeywords + hasCTAs;
+      // AI Discovery (25 points)
+      const hasFAQs = generatedBlog.faqs && generatedBlog.faqs.length >= 5 ? 10 : 0;
+      const hasQuickAnswer = generatedBlog.quickAnswer ? 8 : 0;
+      const hasTakeaways = generatedBlog.keyTakeaways && generatedBlog.keyTakeaways.length >= 4 ? 7 : 0;
+      score += hasFAQs + hasQuickAnswer + hasTakeaways;
 
-    return Math.min(score, 100);
+      // Engagement (20 points)
+      const hasReviews = selectedReviews.length === 3 ? 10 : 0;
+      const hasKeywords = selectedTitle ? 5 : 0;
+      const hasCTAs = 5;
+      score += hasReviews + hasKeywords + hasCTAs;
+
+      setSeoScore(Math.min(score, 100));
+      setIsScanning(false);
+    }, 2000);
   };
 
   // Generate Blog
@@ -234,9 +258,6 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
       const data = await response.json();
       setGeneratedBlog(data);
       
-      const score = calculateSEOScore(data);
-      setSeoScore(score);
-
       setCurrentStep(5);
     } catch (error: any) {
       setGenerationError(error.message || 'Failed to generate blog');
@@ -270,14 +291,18 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
         metaTitle: selectedTitle.h1,
         metaDescription: generatedBlog.metaDescription,
         keywords: selectedTitle.keywords,
-        seoScore,
+        seoScore: seoScore || 0,
         authorName: selectedAuthor.name,
         authorTitle: selectedAuthor.title,
         authorBio: selectedAuthor.bio,
         status: 'draft',
       });
 
+      await fetchBlogs();
       alert('✅ Blog saved successfully!');
+      
+      setViewMode('list');
+      resetBuilder();
     } catch (error: any) {
       alert('❌ Failed to save blog: ' + error.message);
     } finally {
@@ -285,14 +310,133 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
     }
   };
 
+  // Delete Draft
+  const handleDeleteDraft = async (id: string) => {
+    if (confirm('Are you sure you want to delete this draft?')) {
+      try {
+        await deleteBlog(id);
+        await fetchBlogs();
+      } catch (error: any) {
+        alert('Failed to delete draft: ' + error.message);
+      }
+    }
+  };
+
+  // Reset Builder
+  const resetBuilder = () => {
+    setCurrentStep(1);
+    setTitleContext('');
+    setSelectedTitle(null);
+    setTitleSuggestions([]);
+    setSelectedReviews([]);
+    setSelectedImages([]);
+    setGeneratedBlog(null);
+    setSeoScore(null);
+  };
+
+  // Start New Blog
+  const startNewBlog = () => {
+    resetBuilder();
+    setViewMode('create');
+  };
+
+  // DRAFTS LIST VIEW
+  if (viewMode === 'list') {
+    return (
+      <div className="space-y-6">
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">Saved Blog Drafts</h3>
+              <p className="text-sm text-slate-600">Your saved blogs for {company.name}</p>
+            </div>
+            <Button onClick={startNewBlog} size="lg">
+              <Plus className="w-4 h-4 mr-2" />
+              Create New Blog
+            </Button>
+          </div>
+
+          {companyBlogs.length === 0 ? (
+            <div className="text-center py-12">
+              <FileText className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+              <p className="text-slate-600 mb-4">No blog drafts yet</p>
+              <Button onClick={startNewBlog} size="lg">
+                <Sparkles className="w-5 h-5 mr-2" />
+                Create Your First Blog
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {companyBlogs.map((blog) => (
+                <div
+                  key={blog.id}
+                  className="p-5 border-2 border-slate-200 rounded-lg hover:border-blue-300 hover:shadow-sm transition-all"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-lg text-slate-900 mb-1">{blog.h1}</h4>
+                      <p className="text-sm text-slate-600 mb-3">{blog.h2}</p>
+                      <div className="flex items-center gap-3 text-xs text-slate-500">
+                        <Badge variant="secondary" className="capitalize">{blog.status}</Badge>
+                        {blog.seoScore !== undefined && blog.seoScore > 0 && (
+                          <span className="flex items-center gap-1">
+                            <TrendingUp className="w-3 h-3" />
+                            SEO Score: {blog.seoScore}/100
+                          </span>
+                        )}
+                        <span>
+                          Created {new Date(blog.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          // TODO: Load draft into editor
+                          alert('View/edit draft coming soon!');
+                        }}
+                      >
+                        <Eye className="w-4 h-4 mr-1" />
+                        View
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeleteDraft(blog.id)}
+                        className="text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+    );
+  }
+
+  // CREATE VIEW
   return (
     <div className="space-y-6">
+      {/* Back to Drafts */}
+      {companyBlogs.length > 0 && (
+        <Button variant="ghost" onClick={() => setViewMode('list')}>
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Drafts
+        </Button>
+      )}
+
       {/* Progress Steps */}
       <Card className="p-6">
         <div className="flex items-center justify-between">
           {[1, 2, 3, 4, 5].map((step) => (
             <div key={step} className="flex items-center">
-              <div className={`flex items-center justify-center w-10 h-10 rounded-full ${
+              <div className={`flex items-center justify-center w-10 h-10 rounded-full font-semibold ${
                 currentStep >= step ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'
               }`}>
                 {step}
@@ -306,61 +450,91 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
           ))}
         </div>
         <div className="flex items-center justify-between mt-3">
-          <span className="text-xs text-slate-600">Topic</span>
-          <span className="text-xs text-slate-600">Reviews</span>
-          <span className="text-xs text-slate-600">Images</span>
-          <span className="text-xs text-slate-600">Generate</span>
-          <span className="text-xs text-slate-600">Publish</span>
+          <span className="text-xs text-slate-600 font-medium">Topic</span>
+          <span className="text-xs text-slate-600 font-medium">Reviews</span>
+          <span className="text-xs text-slate-600 font-medium">Images</span>
+          <span className="text-xs text-slate-600 font-medium">Generate</span>
+          <span className="text-xs text-slate-600 font-medium">Publish</span>
         </div>
       </Card>
 
-      {/* Step 1: Generate & Select Title */}
+      {/* Step 1: Title Selection */}
       {currentStep === 1 && (
         <Card className="p-6">
-          <div className="flex items-center gap-2 mb-4">
+          <div className="flex items-center gap-2 mb-6">
             <Sparkles className="w-5 h-5 text-blue-600" />
             <h3 className="text-lg font-semibold text-slate-900">Step 1: Select Blog Topic</h3>
           </div>
 
           {!selectedTitle && titleSuggestions.length === 0 && (
-            <div className="text-center py-8">
-              <Sparkles className="w-16 h-16 text-blue-400 mx-auto mb-4" />
-              <p className="text-slate-600 mb-4">Generate 5 AI-powered blog title suggestions</p>
-              {titleError && (
-                <div className="bg-red-50 border border-red-200 p-3 rounded-lg mb-4">
-                  <p className="text-sm text-red-600">{titleError}</p>
-                </div>
-              )}
-              <Button 
-                onClick={generateTitles} 
-                disabled={generatingTitles}
-                size="lg"
-              >
-                {generatingTitles ? (
-                  <>
-                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                    Generating Titles...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-5 h-5 mr-2" />
-                    Generate 5 Blog Titles
-                  </>
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Blog Topic Context (Optional)
+                </label>
+                <Textarea
+                  value={titleContext}
+                  onChange={(e) => setTitleContext(e.target.value)}
+                  placeholder="Example: Talk about tire rotations in Miami Florida, focus on when drivers should rotate their tires and what signs to look for..."
+                  className="w-full h-24 resize-none"
+                />
+                <p className="text-xs text-slate-500 mt-2">
+                  💡 <strong>Tip:</strong> Add keywords or context to get more specific title suggestions. Leave blank for general suggestions based on your business.
+                </p>
+              </div>
+
+              <div className="text-center py-8 border-t">
+                <Sparkles className="w-16 h-16 text-blue-400 mx-auto mb-4" />
+                <h4 className="text-lg font-semibold text-slate-900 mb-2">Generate AI-Powered Titles</h4>
+                <p className="text-slate-600 mb-6">Get 5 blog title suggestions tailored to your business</p>
+                
+                {titleError && (
+                  <div className="bg-red-50 border border-red-200 p-3 rounded-lg mb-4 max-w-md mx-auto">
+                    <p className="text-sm text-red-600">{titleError}</p>
+                  </div>
                 )}
-              </Button>
+                
+                <Button 
+                  onClick={generateTitles} 
+                  disabled={generatingTitles}
+                  size="lg"
+                  className="px-8"
+                >
+                  {generatingTitles ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      Generating Titles...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-5 h-5 mr-2" />
+                      Generate 5 Blog Titles
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           )}
 
           {!selectedTitle && titleSuggestions.length > 0 && (
-            <div className="space-y-3">
-              <p className="text-sm text-slate-600 mb-4">Select a blog topic:</p>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm text-slate-600">Click to select a blog topic:</p>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => setTitleSuggestions([])}
+                >
+                  Generate New Titles
+                </Button>
+              </div>
               {titleSuggestions.map((suggestion, index) => (
                 <div
                   key={index}
                   onClick={() => selectTitle(suggestion)}
-                  className="p-4 border-2 border-slate-200 rounded-lg cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all"
+                  className="p-5 border-2 border-slate-200 rounded-lg cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all group"
                 >
-                  <h4 className="font-semibold text-slate-900 mb-1">{suggestion.h1}</h4>
+                  <h4 className="font-semibold text-slate-900 mb-2 group-hover:text-blue-700">{suggestion.h1}</h4>
                   <p className="text-sm text-slate-600 mb-3">{suggestion.h2}</p>
                   <div className="flex flex-wrap gap-2">
                     {suggestion.keywords.map((keyword, idx) => (
@@ -376,26 +550,41 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
 
           {selectedTitle && (
             <div className="space-y-4">
-              <div className="bg-blue-50 border-2 border-blue-500 rounded-lg p-4">
-                <div className="flex items-start justify-between mb-3">
+              <div className="bg-blue-50 border-2 border-blue-500 rounded-lg p-5">
+                <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <h4 className="font-semibold text-slate-900 mb-1">{selectedTitle.h1}</h4>
-                    <p className="text-sm text-slate-600 mb-3">{selectedTitle.h2}</p>
+                    <div className="flex items-center gap-2 mb-3">
+                      <CheckCircle className="w-5 h-5 text-blue-600" />
+                      <span className="text-xs font-semibold text-blue-700 uppercase">Selected Topic</span>
+                    </div>
+                    <h4 className="font-semibold text-lg text-slate-900 mb-2">{selectedTitle.h1}</h4>
+                    <p className="text-sm text-slate-600 mb-4">{selectedTitle.h2}</p>
                     <div className="flex flex-wrap gap-2">
                       {selectedTitle.keywords.map((keyword, idx) => (
-                        <Badge key={idx} variant="secondary" className="text-xs">
+                        <Badge key={idx} className="bg-blue-100 text-blue-700 border-blue-200">
                           {keyword}
                         </Badge>
                       ))}
                     </div>
                   </div>
-                  <CheckCircle className="w-6 h-6 text-blue-600 flex-shrink-0" />
                 </div>
               </div>
 
-              <Button onClick={() => setCurrentStep(2)} className="w-full" size="lg">
-                Next: Select Reviews <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
+              <div className="flex gap-3">
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    setSelectedTitle(null);
+                    setTitleSuggestions([]);
+                  }}
+                  className="flex-1"
+                >
+                  Choose Different Topic
+                </Button>
+                <Button onClick={() => setCurrentStep(2)} className="flex-1" size="lg">
+                  Next: Select Reviews <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
+              </div>
             </div>
           )}
         </Card>
@@ -404,19 +593,20 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
       {/* Step 2: Review Selection */}
       {currentStep === 2 && (
         <Card className="p-6">
-          <div className="flex items-center gap-2 mb-4">
+          <div className="flex items-center gap-2 mb-6">
             <MessageSquare className="w-5 h-5 text-purple-600" />
             <h3 className="text-lg font-semibold text-slate-900">Step 2: Select 3 Reviews</h3>
-            <Badge variant="secondary">{selectedReviews.length}/3 selected</Badge>
+            <Badge variant="secondary" className="ml-2">{selectedReviews.length}/3 selected</Badge>
           </div>
 
           {fiveStarReviews.length === 0 ? (
-            <div className="text-center py-8">
+            <div className="text-center py-12">
               <AlertCircle className="w-12 h-12 text-slate-400 mx-auto mb-3" />
-              <p className="text-slate-600">No 5-star reviews available for this company.</p>
+              <p className="text-slate-600 mb-2">No 5-star reviews available for this company.</p>
+              <p className="text-sm text-slate-500">Add reviews in the Reviews tab first.</p>
             </div>
           ) : (
-            <div className="space-y-3 mb-4">
+            <div className="space-y-3 mb-6">
               {fiveStarReviews.map((review) => {
                 const isRecommended = recommendedReviews.includes(review.id);
                 const isSelected = selectedReviews.find(r => r.id === review.id);
@@ -427,12 +617,12 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
                     onClick={() => toggleReview(review)}
                     className={`p-4 border-2 rounded-lg cursor-pointer transition-all relative ${
                       isSelected
-                        ? 'border-blue-500 bg-blue-50'
+                        ? 'border-purple-500 bg-purple-50'
                         : 'border-slate-200 hover:border-slate-300'
                     }`}
                   >
                     {isRecommended && !isSelected && (
-                      <Badge className="absolute top-2 right-2 bg-green-500">
+                      <Badge className="absolute top-3 right-3 bg-green-500 text-white">
                         ⭐ Recommended
                       </Badge>
                     )}
@@ -446,18 +636,18 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
                         </div>
                       </div>
                       {isSelected && (
-                        <CheckCircle className="w-5 h-5 text-blue-600" />
+                        <CheckCircle className="w-5 h-5 text-purple-600" />
                       )}
                     </div>
-                    <p className="text-sm text-slate-600">{review.text}</p>
-                    <p className="text-xs text-slate-400 mt-1">{review.platform}</p>
+                    <p className="text-sm text-slate-600 pr-20">{review.text}</p>
+                    <p className="text-xs text-slate-400 mt-2">{review.platform}</p>
                   </div>
                 );
               })}
             </div>
           )}
 
-          <div className="flex gap-2">
+          <div className="flex gap-3">
             <Button variant="outline" onClick={() => setCurrentStep(1)} className="flex-1">
               <ArrowLeft className="w-4 h-4 mr-2" /> Back
             </Button>
@@ -475,16 +665,17 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
       {/* Step 3: Image Selection */}
       {currentStep === 3 && (
         <Card className="p-6">
-          <div className="flex items-center gap-2 mb-4">
+          <div className="flex items-center gap-2 mb-6">
             <ImageIcon className="w-5 h-5 text-green-600" />
             <h3 className="text-lg font-semibold text-slate-900">Step 3: Select 3 Images</h3>
-            <Badge variant="secondary">{selectedImages.length}/3 selected</Badge>
+            <Badge variant="secondary" className="ml-2">{selectedImages.length}/3 selected</Badge>
           </div>
 
           {availableImages.length === 0 ? (
-            <div className="text-center py-8">
+            <div className="text-center py-12">
               <AlertCircle className="w-12 h-12 text-slate-400 mx-auto mb-3" />
-              <p className="text-slate-600">No images available in Media Gallery.</p>
+              <p className="text-slate-600 mb-2">No images available in Media Gallery.</p>
+              <p className="text-sm text-slate-500">Add images in the Media tab first.</p>
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-4 mb-6">
@@ -494,7 +685,7 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
                   onClick={() => toggleImage(url)}
                   className={`relative aspect-square rounded-lg overflow-hidden cursor-pointer border-4 transition-all ${
                     selectedImages.includes(url)
-                      ? 'border-blue-500 ring-2 ring-blue-500'
+                      ? 'border-green-500 ring-2 ring-green-500 scale-95'
                       : 'border-transparent hover:border-slate-300'
                   }`}
                 >
@@ -504,8 +695,10 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
                     className="w-full h-full object-cover"
                   />
                   {selectedImages.includes(url) && (
-                    <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-1">
-                      <CheckCircle className="w-5 h-5" />
+                    <div className="absolute inset-0 bg-green-600 bg-opacity-20 flex items-center justify-center">
+                      <div className="bg-green-600 text-white rounded-full p-2">
+                        <CheckCircle className="w-6 h-6" />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -513,7 +706,7 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
             </div>
           )}
 
-          <div className="flex gap-2">
+          <div className="flex gap-3">
             <Button variant="outline" onClick={() => setCurrentStep(2)} className="flex-1">
               <ArrowLeft className="w-4 h-4 mr-2" /> Back
             </Button>
@@ -528,44 +721,49 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
         </Card>
       )}
 
-      {/* Step 4: Generate Blog */}
+      {/* Step 4: Generate */}
       {currentStep === 4 && selectedTitle && (
         <Card className="p-6">
-          <div className="flex items-center gap-2 mb-4">
+          <div className="flex items-center gap-2 mb-6">
             <Sparkles className="w-5 h-5 text-yellow-600" />
             <h3 className="text-lg font-semibold text-slate-900">Step 4: Generate Blog</h3>
           </div>
 
-          <div className="space-y-4">
-            <div className="bg-slate-50 p-4 rounded-lg space-y-3">
-              <div>
-                <p className="text-xs font-medium text-slate-500 mb-1">TOPIC:</p>
-                <p className="text-sm font-semibold text-slate-900">{selectedTitle.h1}</p>
-                <p className="text-xs text-slate-600">{selectedTitle.h2}</p>
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <p className="text-xs font-medium text-slate-500">Reviews Selected</p>
-                  <p className="text-2xl font-bold text-purple-600">{selectedReviews.length}</p>
+          <div className="space-y-6">
+            <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-6 rounded-lg border border-blue-200">
+              <h4 className="font-semibold text-slate-900 mb-4">Ready to Generate</h4>
+              <div className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <Sparkles className="w-5 h-5 text-blue-600 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-slate-700">Topic</p>
+                    <p className="text-sm text-slate-600">{selectedTitle.h1}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs font-medium text-slate-500">Images Selected</p>
-                  <p className="text-2xl font-bold text-green-600">{selectedImages.length}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-slate-500">Keywords</p>
-                  <p className="text-2xl font-bold text-blue-600">{selectedTitle.keywords.length}</p>
+                <div className="grid grid-cols-3 gap-4 pt-3 border-t border-blue-200">
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-purple-600">{selectedReviews.length}</p>
+                    <p className="text-xs text-slate-600">Reviews</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-green-600">{selectedImages.length}</p>
+                    <p className="text-xs text-slate-600">Images</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-blue-600">{selectedTitle.keywords.length}</p>
+                    <p className="text-xs text-slate-600">Keywords</p>
+                  </div>
                 </div>
               </div>
             </div>
 
             {generationError && (
-              <div className="bg-red-50 border border-red-200 p-3 rounded-lg">
+              <div className="bg-red-50 border border-red-200 p-4 rounded-lg">
                 <p className="text-sm text-red-600">{generationError}</p>
               </div>
             )}
 
-            <div className="flex gap-2">
+            <div className="flex gap-3">
               <Button variant="outline" onClick={() => setCurrentStep(3)} className="flex-1">
                 <ArrowLeft className="w-4 h-4 mr-2" /> Back
               </Button>
@@ -592,102 +790,134 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
         </Card>
       )}
 
-      {/* Step 5: Preview & Save */}
+      {/* Step 5: Preview & Publish */}
       {currentStep === 5 && generatedBlog && selectedTitle && (
         <div className="space-y-6">
-          {/* SEO Score */}
+          {/* SEO Score Card */}
           <Card className="p-6">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-semibold text-slate-900">SEO Score</h3>
-                <p className="text-sm text-slate-600">Overall optimization rating</p>
+                <p className="text-sm text-slate-600">Scan your blog for optimization rating</p>
               </div>
-              <div className="flex items-center gap-3">
-                <div className={`text-5xl font-bold ${
-                  seoScore >= 90 ? 'text-green-500' :
-                  seoScore >= 70 ? 'text-yellow-500' :
-                  'text-orange-500'
-                }`}>{seoScore}</div>
-                <TrendingUp className={`w-10 h-10 ${
-                  seoScore >= 90 ? 'text-green-500' :
-                  seoScore >= 70 ? 'text-yellow-500' :
-                  'text-orange-500'
-                }`} />
+              <div className="flex items-center gap-4">
+                {seoScore !== null ? (
+                  <div className="flex items-center gap-3">
+                    <div className={`text-5xl font-bold ${
+                      seoScore >= 90 ? 'text-green-500' :
+                      seoScore >= 70 ? 'text-yellow-500' :
+                      'text-orange-500'
+                    }`}>{seoScore}</div>
+                    <TrendingUp className={`w-10 h-10 ${
+                      seoScore >= 90 ? 'text-green-500' :
+                      seoScore >= 70 ? 'text-yellow-500' :
+                      'text-orange-500'
+                    }`} />
+                  </div>
+                ) : (
+                  <Button
+                    onClick={scanSEOScore}
+                    disabled={isScanning}
+                    variant="outline"
+                    size="lg"
+                  >
+                    {isScanning ? (
+                      <>
+                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                        Scanning...
+                      </>
+                    ) : (
+                      <>
+                        <Search className="w-5 h-5 mr-2" />
+                        Scan for Score
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
             </div>
           </Card>
 
-          {/* Blog Preview */}
-          <Card className="p-8">
-            {/* Quick Answer */}
-            {generatedBlog.quickAnswer && (
-              <div className="bg-blue-50 border-l-4 border-blue-600 p-4 mb-6">
-                <p className="text-sm font-medium text-blue-900 mb-1">⚡ QUICK ANSWER</p>
-                <p className="text-slate-700">{generatedBlog.quickAnswer}</p>
-              </div>
-            )}
-
-            {/* H1 & H2 */}
-            <h1 className="text-4xl font-bold text-slate-900 mb-3">{selectedTitle.h1}</h1>
-            <h2 className="text-xl text-slate-600 mb-6">{selectedTitle.h2}</h2>
-
-            {/* Author */}
-            <div className="flex items-center gap-3 mb-6 pb-6 border-b">
-              <div className="w-12 h-12 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-xl">
-                {selectedAuthor.name.charAt(0)}
-              </div>
-              <div>
-                <p className="font-medium text-slate-900">{selectedAuthor.name}</p>
-                <p className="text-sm text-slate-600">{selectedAuthor.title}</p>
-              </div>
+          {/* Blog Preview - Styled like real blog */}
+          <Card className="p-0 overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-8 text-white">
+              <h1 className="text-4xl font-bold mb-3">{selectedTitle.h1}</h1>
+              <p className="text-xl text-blue-100">{selectedTitle.h2}</p>
             </div>
 
-            {/* Key Takeaways */}
-            {generatedBlog.keyTakeaways && generatedBlog.keyTakeaways.length > 0 && (
-              <div className="bg-slate-50 p-6 rounded-lg mb-8">
-                <h3 className="font-semibold text-slate-900 mb-3">📋 KEY TAKEAWAYS</h3>
-                <ul className="space-y-2">
-                  {generatedBlog.keyTakeaways.map((takeaway: string, index: number) => (
-                    <li key={index} className="flex items-start gap-2">
-                      <span className="text-blue-600 mt-1">→</span>
-                      <span className="text-slate-700">{takeaway}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Main Content */}
-            <div 
-              className="prose prose-slate max-w-none mb-8"
-              dangerouslySetInnerHTML={{ __html: generatedBlog.content }}
-            />
-
-            {/* FAQs */}
-            {generatedBlog.faqs && generatedBlog.faqs.length > 0 && (
-              <div className="bg-slate-50 p-6 rounded-lg mb-8">
-                <h3 className="font-semibold text-slate-900 mb-4 text-xl">❓ Frequently Asked Questions</h3>
-                <div className="space-y-4">
-                  {generatedBlog.faqs.map((faq: any, index: number) => (
-                    <div key={index}>
-                      <p className="font-medium text-slate-900 mb-2">{faq.q}</p>
-                      <p className="text-slate-600 text-sm">{faq.a}</p>
-                    </div>
-                  ))}
+            <div className="p-8 max-w-4xl mx-auto">
+              {/* Quick Answer */}
+              {generatedBlog.quickAnswer && (
+                <div className="bg-blue-50 border-l-4 border-blue-600 p-5 mb-8">
+                  <p className="text-xs font-bold text-blue-900 mb-2 uppercase tracking-wide">⚡ Quick Answer</p>
+                  <p className="text-slate-700">{generatedBlog.quickAnswer}</p>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Author Bio */}
-            <div className="bg-slate-100 p-6 rounded-lg">
-              <div className="flex items-start gap-4">
-                <div className="w-16 h-16 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-2xl flex-shrink-0">
+              {/* Author */}
+              <div className="flex items-center gap-3 mb-8 pb-6 border-b">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-purple-600 text-white rounded-full flex items-center justify-center font-bold text-xl">
                   {selectedAuthor.name.charAt(0)}
                 </div>
-                <div className="flex-1">
-                  <h4 className="font-semibold text-slate-900 mb-1">{selectedAuthor.name}</h4>
-                  <p className="text-sm text-slate-600 mb-2">{selectedAuthor.title}</p>
-                  <p className="text-sm text-slate-700">{selectedAuthor.bio}</p>
+                <div>
+                  <p className="font-semibold text-slate-900">{selectedAuthor.name}</p>
+                  <p className="text-sm text-slate-600">{selectedAuthor.title}</p>
+                </div>
+              </div>
+
+              {/* Key Takeaways */}
+              {generatedBlog.keyTakeaways && generatedBlog.keyTakeaways.length > 0 && (
+                <div className="bg-slate-50 p-6 rounded-xl mb-8 border border-slate-200">
+                  <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                    <span className="text-2xl">📋</span>
+                    Key Takeaways
+                  </h3>
+                  <ul className="space-y-3">
+                    {generatedBlog.keyTakeaways.map((takeaway: string, index: number) => (
+                      <li key={index} className="flex items-start gap-3">
+                        <span className="text-blue-600 font-bold mt-1">→</span>
+                        <span className="text-slate-700">{takeaway}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Main Content */}
+              <div 
+                className="prose prose-slate prose-lg max-w-none mb-8"
+                dangerouslySetInnerHTML={{ __html: generatedBlog.content }}
+              />
+
+              {/* FAQs */}
+              {generatedBlog.faqs && generatedBlog.faqs.length > 0 && (
+                <div className="bg-slate-50 p-6 rounded-xl mb-8 border border-slate-200">
+                  <h3 className="font-bold text-slate-900 mb-6 text-xl flex items-center gap-2">
+                    <span className="text-2xl">❓</span>
+                    Frequently Asked Questions
+                  </h3>
+                  <div className="space-y-5">
+                    {generatedBlog.faqs.map((faq: any, index: number) => (
+                      <div key={index} className="pb-5 border-b border-slate-200 last:border-0 last:pb-0">
+                        <p className="font-semibold text-slate-900 mb-2 text-lg">{faq.q}</p>
+                        <p className="text-slate-600">{faq.a}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Author Bio */}
+              <div className="bg-gradient-to-r from-slate-50 to-blue-50 p-6 rounded-xl border border-slate-200">
+                <div className="flex items-start gap-4">
+                  <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-purple-600 text-white rounded-full flex items-center justify-center font-bold text-2xl flex-shrink-0">
+                    {selectedAuthor.name.charAt(0)}
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-bold text-slate-900 mb-1">{selectedAuthor.name}</h4>
+                    <p className="text-sm text-slate-600 mb-3">{selectedAuthor.title}</p>
+                    <p className="text-sm text-slate-700">{selectedAuthor.bio}</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -707,8 +937,8 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
                       : 'border-slate-200 hover:border-slate-300'
                   }`}
                 >
-                  <p className="font-medium text-slate-900">{author.name}</p>
-                  <p className="text-sm text-slate-600">{author.title}</p>
+                  <p className="font-semibold text-slate-900">{author.name}</p>
+                  <p className="text-sm text-slate-600 mt-1">{author.title}</p>
                 </div>
               ))}
             </div>
@@ -716,16 +946,14 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
 
           {/* Actions */}
           <Card className="p-6">
-            <div className="flex gap-4">
+            <div className="flex gap-3">
               <Button
                 variant="outline"
                 onClick={() => {
-                  setCurrentStep(1);
-                  setSelectedTitle(null);
-                  setTitleSuggestions([]);
-                  setSelectedReviews([]);
-                  setSelectedImages([]);
-                  setGeneratedBlog(null);
+                  if (confirm('Start over? You will lose this generated blog.')) {
+                    setViewMode('list');
+                    resetBuilder();
+                  }
                 }}
                 className="flex-1"
               >
@@ -736,6 +964,7 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
                 onClick={handleSaveBlog}
                 disabled={isSaving}
                 className="flex-1 bg-green-600 hover:bg-green-700"
+                size="lg"
               >
                 {isSaving ? (
                   <>
@@ -752,6 +981,7 @@ export default function BlogBuilder({ company }: BlogBuilderProps) {
               <Button
                 disabled
                 className="flex-1 bg-slate-300 cursor-not-allowed"
+                size="lg"
               >
                 <Share2 className="w-4 h-4 mr-2" />
                 Publish (Coming Soon)
