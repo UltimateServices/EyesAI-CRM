@@ -47,7 +47,7 @@ export default function LoginPage() {
 
       {/* Content */}
       <div className="relative z-10 min-h-screen flex items-center justify-center p-8">
-        <div className="w-full max-w-md bg-gradient-to-br from-white via-gray-50 to-blue-50 rounded-3xl shadow-2xl p-8 backdrop-blur-sm">
+        <div className="w-full max-w-md bg-gradient-to-br from-white via-sky-50 to-sky-100 rounded-3xl shadow-2xl p-8 backdrop-blur-sm">
           {/* Logo Icon */}
           <div className="flex justify-center mb-6">
             <img src="/logo.png" alt="Eyes AI" className="h-16" />
