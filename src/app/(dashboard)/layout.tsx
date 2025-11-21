@@ -5,16 +5,19 @@ import { useRouter, usePathname } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useStore } from '@/lib/store';
 import Link from 'next/link';
-import { 
-  LayoutDashboard, 
-  Building2, 
-  Settings, 
+import {
+  LayoutDashboard,
+  Building2,
+  Settings,
   LogOut,
   Menu,
   X,
   Crown,
   Briefcase,
-  User as UserIcon
+  User as UserIcon,
+  Search,
+  Bell,
+  ChevronDown
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -30,7 +33,7 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const currentUserRole = useStore((state) => state.currentUserRole);
   const currentOrganization = useStore((state) => state.currentOrganization);
-  
+
   const [user, setUser] = useState<any>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -53,41 +56,28 @@ export default function DashboardLayout({
 
   const getRoleIcon = () => {
     switch (currentUserRole) {
-      case 'admin': return <Crown className="w-4 h-4" />;
-      case 'manager': return <Briefcase className="w-4 h-4" />;
-      case 'va': return <UserIcon className="w-4 h-4" />;
-      default: return <UserIcon className="w-4 h-4" />;
-    }
-  };
-
-  const getRoleColor = () => {
-    switch (currentUserRole) {
-      case 'admin': return 'bg-purple-100 text-purple-700';
-      case 'manager': return 'bg-blue-100 text-blue-700';
-      case 'va': return 'bg-green-100 text-green-700';
-      default: return 'bg-slate-100 text-slate-700';
+      case 'admin': return <Crown className="w-3 h-3" />;
+      case 'manager': return <Briefcase className="w-3 h-3" />;
+      case 'va': return <UserIcon className="w-3 h-3" />;
+      default: return <UserIcon className="w-3 h-3" />;
     }
   };
 
   const navItems = [
-    { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+    { href: '/dashboard', icon: LayoutDashboard, label: 'Overview' },
     { href: '/companies', icon: Building2, label: 'Companies' },
+    { href: '/settings', icon: Settings, label: 'Settings' },
   ];
-
-  // Only show settings for admin and manager
-  if (['admin', 'manager'].includes(currentUserRole || '')) {
-    navItems.push({ href: '/settings', icon: Settings, label: 'Settings' });
-  }
 
   if (!user) {
     return null;
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-purple-50/20">
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
@@ -95,86 +85,95 @@ export default function DashboardLayout({
 
       {/* Sidebar */}
       <aside className={`
-        fixed top-0 left-0 z-50 h-full w-64 bg-white border-r border-slate-200 
+        fixed top-0 left-0 z-50 h-full w-64 bg-white/80 backdrop-blur-xl border-r border-slate-200/60
         transform transition-transform duration-200 ease-in-out
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         lg:translate-x-0
       `}>
         <div className="flex flex-col h-full">
           {/* Logo */}
-          <div className="p-6 border-b border-slate-200">
+          <div className="p-5 border-b border-slate-200/60">
             <div className="flex items-center justify-between">
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                Eyes AI CRM
-              </h1>
-              <button 
+              <img
+                src="/logo.png"
+                alt="Eyes AI"
+                className="h-8"
+              />
+              <button
                 onClick={() => setSidebarOpen(false)}
                 className="lg:hidden p-1 hover:bg-slate-100 rounded"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            {currentOrganization && (
-              <p className="text-xs text-slate-600 mt-2 truncate">
-                {currentOrganization.name}
-              </p>
-            )}
+          </div>
+
+          {/* Workspace Selector */}
+          <div className="p-4">
+            <button className="w-full flex items-center justify-between px-3 py-2.5 bg-slate-100/80 hover:bg-slate-100 rounded-xl transition-colors">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-sm font-medium">
+                  {currentOrganization?.name?.charAt(0) || 'W'}
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-medium text-slate-900 truncate max-w-[120px]">
+                    {currentOrganization?.name || 'My Workspace'}
+                  </p>
+                  <p className="text-xs text-slate-500">Pro plan</p>
+                </div>
+              </div>
+              <ChevronDown className="w-4 h-4 text-slate-400" />
+            </button>
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+          <nav className="flex-1 px-3 space-y-1 overflow-y-auto">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
-              
+
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   onClick={() => setSidebarOpen(false)}
                   className={`
-                    flex items-center gap-3 px-4 py-3 rounded-lg transition-colors
-                    ${isActive 
-                      ? 'bg-blue-50 text-blue-700 font-medium' 
-                      : 'text-slate-700 hover:bg-slate-100'
+                    flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200
+                    ${isActive
+                      ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-lg shadow-blue-500/25'
+                      : 'text-slate-600 hover:bg-slate-100/80 hover:text-slate-900'
                     }
                   `}
                 >
                   <Icon className="w-5 h-5" />
-                  {item.label}
+                  <span className="font-medium">{item.label}</span>
                 </Link>
               );
             })}
           </nav>
 
           {/* User Info */}
-          <div className="p-4 border-t border-slate-200">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold">
+          <div className="p-4 border-t border-slate-200/60">
+            <div className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-100/80 transition-colors cursor-pointer">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold text-sm">
                 {user.email?.charAt(0).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-slate-900 truncate">
-                  {user.email}
+                  {user.email?.split('@')[0]}
                 </p>
-                {currentUserRole && (
-                  <Badge className={`${getRoleColor()} text-xs mt-1`}>
-                    <span className="flex items-center gap-1">
-                      {getRoleIcon()}
-                      {currentUserRole.toUpperCase()}
-                    </span>
-                  </Badge>
-                )}
+                <p className="text-xs text-slate-500 truncate">{user.email}</p>
               </div>
+              <ChevronDown className="w-4 h-4 text-slate-400" />
             </div>
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={handleLogout}
-              className="w-full justify-start gap-2"
+              className="w-full justify-start gap-2 mt-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100/80"
             >
               <LogOut className="w-4 h-4" />
-              Logout
+              Sign out
             </Button>
           </div>
         </div>
@@ -182,24 +181,58 @@ export default function DashboardLayout({
 
       {/* Main Content */}
       <div className="lg:pl-64">
-        {/* Mobile Header */}
-        <header className="lg:hidden sticky top-0 z-30 bg-white border-b border-slate-200 px-4 py-3">
-          <div className="flex items-center justify-between">
+        {/* Top Header */}
+        <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-slate-200/60">
+          <div className="flex items-center justify-between px-6 py-4">
+            {/* Mobile Menu Button */}
             <button
               onClick={() => setSidebarOpen(true)}
-              className="p-2 hover:bg-slate-100 rounded-lg"
+              className="lg:hidden p-2 hover:bg-slate-100 rounded-lg"
             >
-              <Menu className="w-6 h-6" />
+              <Menu className="w-5 h-5" />
             </button>
-            <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              Eyes AI CRM
-            </h1>
-            <div className="w-10" /> {/* Spacer for centering */}
+
+            {/* Search Bar */}
+            <div className="hidden md:flex items-center flex-1 max-w-md">
+              <div className="relative w-full">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  className="w-full pl-10 pr-12 py-2 bg-slate-100/80 border-0 rounded-xl text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all"
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs text-slate-400">
+                  <kbd className="px-1.5 py-0.5 bg-white rounded border border-slate-200 font-mono">⌘</kbd>
+                  <kbd className="px-1.5 py-0.5 bg-white rounded border border-slate-200 font-mono">K</kbd>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Side */}
+            <div className="flex items-center gap-3">
+              <button className="p-2 hover:bg-slate-100 rounded-xl transition-colors relative">
+                <Bell className="w-5 h-5 text-slate-600" />
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-blue-500 rounded-full"></span>
+              </button>
+
+              <div className="hidden sm:flex items-center gap-3 pl-3 border-l border-slate-200">
+                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-medium text-sm">
+                  {user.email?.charAt(0).toUpperCase()}
+                </div>
+                <div className="hidden lg:block">
+                  <p className="text-sm font-medium text-slate-900">{user.email?.split('@')[0]}</p>
+                  <p className="text-xs text-slate-500 flex items-center gap-1">
+                    {getRoleIcon()}
+                    {currentUserRole?.toUpperCase() || 'USER'}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </header>
 
         {/* Page Content */}
-        <main className="min-h-screen">
+        <main className="min-h-[calc(100vh-73px)]">
           {children}
         </main>
       </div>
