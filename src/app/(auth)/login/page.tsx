@@ -47,16 +47,16 @@ export default function LoginPage() {
 
       {/* Content */}
       <div className="relative z-10 min-h-screen flex items-center justify-center p-8">
-        <div className="w-full max-w-md bg-gradient-to-br from-white via-sky-50 to-sky-100 rounded-3xl shadow-2xl p-8 backdrop-blur-sm">
+        <div className="w-full max-w-md bg-gradient-to-br from-white/40 via-sky-200/35 to-sky-300/25 backdrop-blur-xl rounded-3xl shadow-2xl shadow-sky-500/20 p-8 border border-sky-200/30">
           {/* Logo Icon */}
           <div className="flex justify-center mb-6">
-            <img src="/logo.png" alt="Eyes AI" className="h-16" />
+            <img src="/logo.png" alt="Eyes AI" className="h-20" />
           </div>
 
           {/* Header */}
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Welcome Back to Eyes AI</h1>
-            <p className="text-gray-500 text-sm">Systems active. Begin your session.</p>
+            <h1 className="text-2xl font-medium text-white mb-2">Welcome Back to Eyes AI</h1>
+            <p className="text-white/80 text-sm">Systems active. Begin your session.</p>
           </div>
 
           {/* Form */}
@@ -67,7 +67,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Email"
-                className="w-full px-4 py-3.5 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className="w-full px-4 py-3.5 bg-white/60 backdrop-blur-md border border-white/80 rounded-xl text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all shadow-lg shadow-white/20"
                 required
                 disabled={loading}
               />
@@ -79,7 +79,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Password"
-                className="w-full px-4 py-3.5 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all pr-12"
+                className="w-full px-4 py-3.5 bg-white/60 backdrop-blur-md border border-white/80 rounded-xl text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all pr-12 shadow-lg shadow-white/20"
                 required
                 disabled={loading}
               />
@@ -93,7 +93,7 @@ export default function LoginPage() {
             </div>
 
             <div className="text-right">
-              <a href="#" className="text-sm text-gray-500 hover:text-gray-700">Forgot password?</a>
+              <a href="#" className="text-sm text-white/70 hover:text-white">Forgot password?</a>
             </div>
 
             {error && (
@@ -103,7 +103,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-base font-medium rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full py-3.5 bg-gradient-to-r from-[#0284C7] to-[#0EA5E9] hover:from-[#0369A1] hover:to-[#0284C7] text-white text-base font-medium rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {loading ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
@@ -117,9 +117,9 @@ export default function LoginPage() {
           </form>
 
           {/* Sign up link */}
-          <p className="text-center text-gray-500 mt-6 text-sm">
+          <p className="text-center text-white/70 mt-6 text-sm">
             Don't have an account?{' '}
-            <a href="#" className="text-blue-600 hover:text-blue-700 font-medium">
+            <a href="#" className="text-sky-400 hover:text-sky-300 font-medium">
               Sign up
             </a>
           </p>
