@@ -45,12 +45,20 @@ export default function LoginPage() {
       {/* Overlay */}
       <div className="absolute inset-0 bg-black/30" />
 
+      {/* Spotlight from top left */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_120%_120%_at_0%_0%,_rgba(14,165,233,0.6)_0%,_transparent_60%)]" />
+
+      {/* Logo top left */}
+      <div className="absolute top-6 left-6 z-20">
+        <img src="/logo.png" alt="Eyes AI" className="h-16" />
+      </div>
+
       {/* Content */}
       <div className="relative z-10 min-h-screen flex items-center justify-center p-8">
         <div className="w-full max-w-md bg-gradient-to-br from-white/40 via-sky-200/35 to-sky-300/25 backdrop-blur-xl rounded-3xl shadow-2xl shadow-sky-500/20 p-8 border border-sky-200/30">
           {/* Logo Icon */}
           <div className="flex justify-center mb-6">
-            <img src="/logo.png" alt="Eyes AI" className="h-20" />
+            <img src="/logo.png" alt="Eyes AI" className="h-16" />
           </div>
 
           {/* Header */}
@@ -67,7 +75,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Email"
-                className="w-full px-4 py-3.5 bg-white/75 backdrop-blur-md border border-white/80 rounded-xl text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all shadow-lg shadow-white/20"
+                className="w-full px-4 py-3.5 bg-gradient-to-b from-white/90 to-white/70 backdrop-blur-md border-t border-white/80 rounded-xl text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all shadow-lg shadow-sky-500/20"
                 required
                 disabled={loading}
               />
@@ -79,7 +87,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Password"
-                className="w-full px-4 py-3.5 bg-white/75 backdrop-blur-md border border-white/80 rounded-xl text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all pr-12 shadow-lg shadow-white/20"
+                className="w-full px-4 py-3.5 bg-gradient-to-b from-white/90 to-white/70 backdrop-blur-md border-t border-white/80 rounded-xl text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all pr-12 shadow-lg shadow-sky-500/20"
                 required
                 disabled={loading}
               />
@@ -103,7 +111,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3.5 bg-gradient-to-r from-[#0284C7] to-[#0EA5E9] hover:from-[#0369A1] hover:to-[#0284C7] text-white text-base font-medium rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full py-3.5 bg-gradient-to-b from-[#38BDF8] via-[#0EA5E9] to-[#0369A1] hover:from-[#0EA5E9] hover:via-[#0284C7] hover:to-[#0369A1] text-white text-base font-medium rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-sky-500/40 border-t border-white/30"
             >
               {loading ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
