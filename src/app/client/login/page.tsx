@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { signIn } from '@/lib/auth';
 import { Loader2, Eye, EyeOff, LogIn } from 'lucide-react';
 
-export default function LoginPage() {
+export default function ClientLoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -20,7 +20,7 @@ export default function LoginPage() {
 
     try {
       await signIn(email, password);
-      router.push('/dashboard');
+      router.push('/client/dashboard');
       router.refresh();
     } catch (err: any) {
       setError(err.message || 'Invalid email or password');
@@ -63,8 +63,8 @@ export default function LoginPage() {
 
           {/* Header */}
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-medium text-white mb-2">Staff Portal</h1>
-            <p className="text-white/80 text-sm">Welcome back, team. Begin your session.</p>
+            <h1 className="text-2xl font-medium text-white mb-2">Welcome to Your Client Portal</h1>
+            <p className="text-white/80 text-sm">Access your AI-powered insights and reports.</p>
           </div>
 
           {/* Form */}
@@ -118,17 +118,17 @@ export default function LoginPage() {
               ) : (
                 <>
                   <LogIn className="w-5 h-5" />
-                  Log in
+                  Access Portal
                 </>
               )}
             </button>
           </form>
 
-          {/* Sign up link */}
+          {/* Contact link */}
           <p className="text-center text-white/70 mt-6 text-sm">
-            Don't have an account?{' '}
+            Need help?{' '}
             <a href="#" className="text-sky-400 hover:text-sky-300 font-medium">
-              Sign up
+              Contact Support
             </a>
           </p>
         </div>
