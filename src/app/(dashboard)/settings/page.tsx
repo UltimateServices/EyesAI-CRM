@@ -81,16 +81,23 @@ export default function SettingsPage() {
 
   const loadWebflowSettings = async () => {
     try {
+      // Load the constant CRM API key from environment
+      const keyResponse = await fetch('/api/webflow/crm-key');
+      if (keyResponse.ok) {
+        const keyData = await keyResponse.json();
+        setCrmApiKey(keyData.crmApiKey);
+      }
+
+      // Load saved settings
       const response = await fetch('/api/webflow/settings');
       const data = await response.json();
 
       if (response.ok && data.settings) {
         setWebflowAppUrl(data.settings.webflow_app_url || '');
         setWebflowApiToken(data.settings.webflow_api_token || '');
-        setCrmApiKey(data.settings.crm_api_key || '');
 
         // Set connection status based on whether settings exist
-        if (data.settings.webflow_app_url && data.settings.webflow_api_token && data.settings.crm_api_key) {
+        if (data.settings.webflow_app_url && data.settings.webflow_api_token) {
           setConnectionStatus('connected');
         }
       }
@@ -313,11 +320,6 @@ export default function SettingsPage() {
   };
 
   const handleSyncProfiles = async () => {
-    if (connectionStatus !== 'connected') {
-      alert('Please connect to Webflow first');
-      return;
-    }
-
     setSyncing(true);
 
     try {
@@ -326,11 +328,7 @@ export default function SettingsPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          webflowAppUrl: webflowAppUrl,
-          webflowApiToken: webflowApiToken,
-          crmApiKey: crmApiKey,
-        }),
+        body: JSON.stringify({}), // No params needed - uses env variables
       });
 
       const data = await response.json();
@@ -342,7 +340,13 @@ export default function SettingsPage() {
       }
 
       setLastSyncTime(new Date().toISOString());
-      alert(`✅ ${data.message}`);
+
+      // Show detailed results
+      let message = `✅ ${data.message}`;
+      if (data.errors && data.errors.length > 0) {
+        message += `\n\n❌ Failed items:\n${data.errors.map((e: any) => `- ${e.companyName}: ${e.error}`).join('\n')}`;
+      }
+      alert(message);
     } catch (error: any) {
       alert(`❌ Sync failed: ${error.message}`);
       console.error('Sync profiles error:', error);
@@ -352,11 +356,6 @@ export default function SettingsPage() {
   };
 
   const handleSyncContent = async () => {
-    if (connectionStatus !== 'connected') {
-      alert('Please connect to Webflow first');
-      return;
-    }
-
     setSyncing(true);
 
     try {
@@ -365,11 +364,7 @@ export default function SettingsPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          webflowAppUrl: webflowAppUrl,
-          webflowApiToken: webflowApiToken,
-          crmApiKey: crmApiKey,
-        }),
+        body: JSON.stringify({}), // No params needed - uses env variables
       });
 
       const data = await response.json();
@@ -381,7 +376,13 @@ export default function SettingsPage() {
       }
 
       setLastSyncTime(new Date().toISOString());
-      alert(`✅ ${data.message}`);
+
+      // Show detailed results
+      let message = `✅ ${data.message}`;
+      if (data.errors && data.errors.length > 0) {
+        message += `\n\n❌ Failed items:\n${data.errors.map((e: any) => `- ${e.blogTitle}: ${e.error}`).join('\n')}`;
+      }
+      alert(message);
     } catch (error: any) {
       alert(`❌ Sync failed: ${error.message}`);
       console.error('Sync content error:', error);
@@ -683,253 +684,99 @@ export default function SettingsPage() {
       <Card className="p-6">
         <div className="flex items-center gap-3 mb-6">
           <Zap className="w-5 h-5 text-blue-600" />
-          <h2 className="text-xl font-semibold text-slate-900">Webflow Integration</h2>
-          <Badge className={
-            connectionStatus === 'connected' ? 'bg-green-100 text-green-700' :
-            connectionStatus === 'testing' ? 'bg-yellow-100 text-yellow-700' :
-            'bg-slate-100 text-slate-600'
-          }>
-            {connectionStatus === 'connected' ? (
-              <><CheckCircle className="w-3 h-3 mr-1 inline" /> Connected</>
-            ) : connectionStatus === 'testing' ? (
-              <><Loader2 className="w-3 h-3 mr-1 inline animate-spin" /> Testing...</>
-            ) : (
-              <><XCircle className="w-3 h-3 mr-1 inline" /> Disconnected</>
-            )}
+          <h2 className="text-xl font-semibold text-slate-900">Webflow CMS Sync</h2>
+          <Badge className="bg-green-100 text-green-700">
+            <CheckCircle className="w-3 h-3 mr-1 inline" /> Ready
           </Badge>
         </div>
 
         <p className="text-slate-600 mb-6">
-          Sync your companies and content to Webflow CMS. Configure your API credentials below.
+          Sync your companies and blogs directly to Webflow CMS. Your API credentials are configured via environment variables.
         </p>
 
-        {/* API Configuration */}
-        <div className="space-y-4 mb-6">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Webflow App URL
-            </label>
-            <Input
-              type="url"
-              placeholder="https://eyesai.webflow.io/webflow-crm-connector"
-              value={webflowAppUrl}
-              onChange={(e) => setWebflowAppUrl(e.target.value)}
-              disabled={processing}
-            />
-            <p className="text-xs text-slate-500 mt-1">
-              Base URL only (e.g., https://your-app.webflow.io/app-name) - Do NOT include /api/sync/profiles
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Webflow API Token
-            </label>
-            <div className="relative">
-              <Input
-                type={showWebflowToken ? 'text' : 'password'}
-                placeholder="Enter your Webflow API token"
-                value={webflowApiToken}
-                onChange={(e) => setWebflowApiToken(e.target.value)}
-                disabled={processing}
-                className="pr-20"
-              />
-              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
-                <button
-                  type="button"
-                  onClick={() => setShowWebflowToken(!showWebflowToken)}
-                  className="text-slate-400 hover:text-slate-600"
-                >
-                  {showWebflowToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => copyToClipboard(webflowApiToken, 'webflowToken')}
-                  className="text-slate-400 hover:text-slate-600"
-                >
-                  {copiedField === 'webflowToken' ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-            <p className="text-xs text-slate-500 mt-1">
-              Get from Webflow → Site Settings → Integrations → API Access
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
-              CRM API Key
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={generateCrmApiKey}
-                disabled={processing}
-              >
-                Generate
-              </Button>
-            </label>
-            <div className="relative">
-              <Input
-                type={showCrmApiKey ? 'text' : 'password'}
-                placeholder="crm_..."
-                value={crmApiKey}
-                onChange={(e) => setCrmApiKey(e.target.value)}
-                disabled={processing}
-                className="pr-20"
-              />
-              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
-                <button
-                  type="button"
-                  onClick={() => setShowCrmApiKey(!showCrmApiKey)}
-                  className="text-slate-400 hover:text-slate-600"
-                >
-                  {showCrmApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => copyToClipboard(crmApiKey, 'crmApiKey')}
-                  className="text-slate-400 hover:text-slate-600"
-                >
-                  {copiedField === 'crmApiKey' ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-            <p className="text-xs text-slate-500 mt-1">Add this to Webflow bridge app environment variables</p>
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="flex gap-2 mb-6">
-          <Button
-            onClick={saveWebflowSettings}
-            disabled={processing}
-            variant="default"
-            className="gap-2"
-          >
-            {processing ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Check className="w-4 h-4" />
-                Save Settings
-              </>
-            )}
-          </Button>
-          <Button
-            onClick={testWebflowConnection}
-            disabled={processing || connectionStatus === 'testing'}
-            variant="outline"
-            className="gap-2"
-          >
-            {connectionStatus === 'testing' ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Testing Connection...
-              </>
-            ) : (
-              <>
-                <Link2 className="w-4 h-4" />
-                Test Connection
-              </>
-            )}
-          </Button>
-        </div>
-
         {/* Sync Actions */}
-        {connectionStatus === 'connected' && (
-          <>
-            <div className="border-t pt-6">
-              <h3 className="font-semibold text-slate-900 mb-4">Sync Data to Webflow</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card className="p-4 bg-blue-50 border-blue-200">
-                  <div className="flex items-start gap-3 mb-3">
-                    <Building2 className="w-5 h-5 text-blue-600 mt-0.5" />
-                    <div>
-                      <h4 className="font-semibold text-slate-900">Sync Profiles</h4>
-                      <p className="text-sm text-slate-600 mt-1">
-                        Sync all companies to Webflow CMS as Profiles
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    onClick={handleSyncProfiles}
-                    disabled={syncing}
-                    variant="outline"
-                    className="w-full gap-2"
-                  >
-                    {syncing ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Syncing...
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="w-4 h-4" />
-                        Sync Profiles Now
-                      </>
-                    )}
-                  </Button>
-                </Card>
-
-                <Card className="p-4 bg-purple-50 border-purple-200">
-                  <div className="flex items-start gap-3 mb-3">
-                    <Zap className="w-5 h-5 text-purple-600 mt-0.5" />
-                    <div>
-                      <h4 className="font-semibold text-slate-900">Sync Content</h4>
-                      <p className="text-sm text-slate-600 mt-1">
-                        Sync blogs and videos to Webflow CMS
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    onClick={handleSyncContent}
-                    disabled={syncing}
-                    variant="outline"
-                    className="w-full gap-2"
-                  >
-                    {syncing ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Syncing...
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="w-4 h-4" />
-                        Sync Content Now
-                      </>
-                    )}
-                  </Button>
-                </Card>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Card className="p-4 bg-blue-50 border-blue-200">
+            <div className="flex items-start gap-3 mb-3">
+              <Building2 className="w-5 h-5 text-blue-600 mt-0.5" />
+              <div>
+                <h4 className="font-semibold text-slate-900">Sync Profiles</h4>
+                <p className="text-sm text-slate-600 mt-1">
+                  Sync all companies to Webflow CMS as Profiles
+                </p>
               </div>
             </div>
+            <Button
+              onClick={handleSyncProfiles}
+              disabled={syncing}
+              variant="outline"
+              className="w-full gap-2"
+            >
+              {syncing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Syncing...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4" />
+                  Sync Profiles Now
+                </>
+              )}
+            </Button>
+          </Card>
 
-            {/* Last Sync Info */}
-            {lastSyncTime && (
-              <div className="mt-4 flex items-center gap-2 text-sm text-slate-600">
-                <CheckCircle className="w-4 h-4 text-green-600" />
-                Last synced: {new Date(lastSyncTime).toLocaleString()}
+          <Card className="p-4 bg-purple-50 border-purple-200">
+            <div className="flex items-start gap-3 mb-3">
+              <Zap className="w-5 h-5 text-purple-600 mt-0.5" />
+              <div>
+                <h4 className="font-semibold text-slate-900">Sync Content</h4>
+                <p className="text-sm text-slate-600 mt-1">
+                  Sync blogs to Webflow CMS
+                </p>
               </div>
-            )}
-          </>
+            </div>
+            <Button
+              onClick={handleSyncContent}
+              disabled={syncing}
+              variant="outline"
+              className="w-full gap-2"
+            >
+              {syncing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Syncing...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4" />
+                  Sync Content Now
+                </>
+              )}
+            </Button>
+          </Card>
+        </div>
+
+        {/* Last Sync Info */}
+        {lastSyncTime && (
+          <div className="mt-4 flex items-center gap-2 text-sm text-slate-600">
+            <CheckCircle className="w-4 h-4 text-green-600" />
+            Last synced: {new Date(lastSyncTime).toLocaleString()}
+          </div>
         )}
 
-        {/* Setup Instructions */}
-        <Card className="p-4 bg-yellow-50 border-yellow-200 mt-6">
+        {/* Info Card */}
+        <Card className="p-4 bg-blue-50 border-blue-200 mt-6">
           <div className="flex items-start gap-2">
-            <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
+            <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
             <div className="text-sm text-slate-700">
-              <p className="font-semibold mb-2">Setup Instructions:</p>
-              <ol className="list-decimal list-inside space-y-1">
-                <li>Enter your Webflow bridge app URL</li>
-                <li>Get your Webflow API Token from: Site Settings → Integrations → API Access</li>
-                <li>Generate a CRM API Key and add it to your bridge app environment variables</li>
-                <li>Click "Test Connection" to verify the setup</li>
-                <li>Use the sync buttons to push data to Webflow</li>
-              </ol>
+              <p className="font-semibold mb-2">How it works:</p>
+              <ul className="list-disc list-inside space-y-1">
+                <li>Profiles sync creates/updates company listings in Webflow CMS</li>
+                <li>Content sync pushes published blogs to your Webflow site</li>
+                <li>API credentials are configured via environment variables (WEBFLOW_CMS_SITE_API_TOKEN, WEBFLOW_SITE_ID)</li>
+                <li>All synced items are automatically published and visible on your live site</li>
+              </ul>
             </div>
           </div>
         </Card>

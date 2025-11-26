@@ -2,20 +2,49 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 
+// Webflow API constants
+const WEBFLOW_SITE_ID = process.env.WEBFLOW_SITE_ID || '68db778020fc2ac5c78f401a';
+const PROFILES_COLLECTION_ID = '6919a7f067ba553645e406a6';
+const BLOGS_COLLECTION_ID = '6924108f80f9c5582bc96d73';
+
+// Helper function to find Webflow Profile ID by company slug
+async function findProfileId(companySlug: string, webflowToken: string): Promise<string | null> {
+  try {
+    const response = await fetch(
+      `https://api.webflow.com/v2/collections/${PROFILES_COLLECTION_ID}/items`,
+      {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${webflowToken}`,
+          'accept': 'application/json'
+        }
+      }
+    );
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    const profile = data.items?.find((item: any) => item.fieldData?.slug === companySlug);
+    return profile?.id || null;
+  } catch (error) {
+    console.error('Error finding profile:', error);
+    return null;
+  }
+}
+
 // POST /api/webflow/sync-content - Sync blogs to Webflow
 export async function POST(request: NextRequest) {
   try {
     const cookieStore = await cookies();
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
 
-    // Get request body
-    const body = await request.json();
-    const { webflowAppUrl, webflowApiToken, crmApiKey } = body;
+    // Get Webflow token from environment
+    const webflowToken = process.env.WEBFLOW_CMS_SITE_API_TOKEN;
 
-    if (!webflowAppUrl || !webflowApiToken || !crmApiKey) {
+    if (!webflowToken) {
       return NextResponse.json(
-        { error: 'Webflow App URL, Webflow API Token, and CRM API Key are required' },
-        { status: 400 }
+        { error: 'Webflow API token not configured' },
+        { status: 500 }
       );
     }
 
@@ -67,79 +96,222 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Map blogs to Webflow format
-    const content = blogs.map((blog: any) => ({
-      // Required fields
-      id: blog.id,
-      title: blog.h1,
-      slug: blog.h1.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
-      companyId: blog.company_id,
-      companyName: blog.companies.name,
+    // Sync each blog to Webflow
+    const results = {
+      successful: 0,
+      failed: 0,
+      errors: [] as Array<{ blogId: string; blogTitle: string; error: string }>,
+    };
 
-      // Content fields
-      content: blog.content,
-      h2: blog.h2 || '',
-      quickAnswer: blog.quick_answer || '',
-      keyTakeaways: blog.key_takeaways || [],
-      faqs: blog.faqs || [],
+    for (const blog of blogs) {
+      try {
+        // Generate slug from blog title
+        const slug = `${blog.h1.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${blog.id.substring(0, 8)}`;
 
-      // SEO fields
-      metaTitle: blog.meta_title || blog.h1,
-      metaDescription: blog.meta_description || '',
-      keywords: blog.keywords || [],
+        // Generate company slug to find the profile
+        const companySlug = `${blog.companies.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${blog.company_id.substring(0, 8)}`;
 
-      // Author
-      authorName: blog.author_name || 'EyesAI Team',
-      authorTitle: blog.author_title || '',
-      authorBio: blog.author_bio || '',
+        // Find the Webflow Profile ID for this company
+        const profileId = await findProfileId(companySlug, webflowToken);
 
-      // Publishing
-      publishedUrl: blog.published_url || '',
-      publishedAt: blog.published_at || blog.created_at,
+        if (!profileId) {
+          results.failed++;
+          results.errors.push({
+            blogId: blog.id,
+            blogTitle: blog.h1,
+            error: `Profile not found for company: ${blog.companies.name}. Sync the company profile first.`
+          });
+          continue;
+        }
 
-      // Images
-      selectedImages: blog.selected_images || [],
+        // Map to Webflow Blogs field names
+        const webflowBlog = {
+          fieldData: {
+            // Required fields
+            name: blog.h1, // Title
+            slug: slug,
 
-      // Metadata
-      updatedAt: blog.updated_at || new Date().toISOString(),
-    }));
+            // Content
+            body: blog.content || '', // RichText content
 
-    // Send content to Webflow bridge app
-    const syncEndpoint = `${webflowAppUrl}/api/sync/content`;
+            // Profile reference
+            profile: profileId,
 
-    const response = await fetch(syncEndpoint, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${crmApiKey}`,
-        'X-Webflow-Token': webflowApiToken,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        type: 'blogs',
-        content,
-      }),
-    });
+            // Optional fields
+            'publish-date': blog.published_at || blog.created_at || new Date().toISOString(),
+            'category-tag': blog.category || '',
+            'cover-image': blog.cover_image_url ? { url: blog.cover_image_url } : undefined,
+            'schema-json': JSON.stringify({
+              metaTitle: blog.meta_title || blog.h1,
+              metaDescription: blog.meta_description || '',
+              keywords: blog.keywords || []
+            })
+          }
+        };
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Webflow sync error:', errorText);
-      return NextResponse.json(
-        {
-          error: 'Sync to Webflow failed',
-          details: errorText,
-          status: response.status
-        },
-        { status: 500 }
-      );
+        // Remove undefined fields
+        Object.keys(webflowBlog.fieldData).forEach(key => {
+          if (webflowBlog.fieldData[key as keyof typeof webflowBlog.fieldData] === undefined) {
+            delete webflowBlog.fieldData[key as keyof typeof webflowBlog.fieldData];
+          }
+        });
+
+        // Check if blog already exists
+        const listResponse = await fetch(
+          `https://api.webflow.com/v2/collections/${BLOGS_COLLECTION_ID}/items`,
+          {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${webflowToken}`,
+              'accept': 'application/json'
+            }
+          }
+        );
+
+        let existingItem = null;
+        if (listResponse.ok) {
+          const listData = await listResponse.json();
+          existingItem = listData.items?.find((item: any) => item.fieldData?.slug === slug);
+        }
+
+        // Create or update the blog
+        let response;
+        if (existingItem) {
+          // Update existing item
+          console.log(`Updating existing blog: ${blog.h1}`);
+          response = await fetch(
+            `https://api.webflow.com/v2/collections/${BLOGS_COLLECTION_ID}/items/${existingItem.id}`,
+            {
+              method: 'PATCH',
+              headers: {
+                'Authorization': `Bearer ${webflowToken}`,
+                'Content-Type': 'application/json',
+                'accept': 'application/json'
+              },
+              body: JSON.stringify(webflowBlog)
+            }
+          );
+        } else {
+          // Create new item
+          console.log(`Creating new blog: ${blog.h1}`);
+          response = await fetch(
+            `https://api.webflow.com/v2/collections/${BLOGS_COLLECTION_ID}/items`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${webflowToken}`,
+                'Content-Type': 'application/json',
+                'accept': 'application/json'
+              },
+              body: JSON.stringify(webflowBlog)
+            }
+          );
+        }
+
+        if (!response.ok) {
+          const errorText = await response.text();
+
+          try {
+            const errorData = JSON.parse(errorText);
+
+            // Check if it's a slug conflict error (item was archived)
+            if (errorData.code === 'validation_error' &&
+                errorData.details?.some((d: any) => d.param === 'slug' && d.description?.includes('already in database'))) {
+
+              console.log(`Slug conflict for blog ${blog.h1}, generating new slug with timestamp`);
+
+              // Generate a new slug with timestamp to avoid archived item conflicts
+              const newSlug = `${blog.h1.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${blog.id.substring(0, 8)}-${Date.now()}`;
+              webflowBlog.fieldData.slug = newSlug;
+
+              // Try creating again with the new slug
+              const retryResponse = await fetch(
+                `https://api.webflow.com/v2/collections/${BLOGS_COLLECTION_ID}/items`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${webflowToken}`,
+                    'Content-Type': 'application/json',
+                    'accept': 'application/json'
+                  },
+                  body: JSON.stringify(webflowBlog)
+                }
+              );
+
+              if (!retryResponse.ok) {
+                const retryError = await retryResponse.text();
+                console.error(`Failed to sync blog ${blog.h1} after retry:`, retryError);
+                results.failed++;
+                results.errors.push({
+                  blogId: blog.id,
+                  blogTitle: blog.h1,
+                  error: retryError
+                });
+                continue;
+              }
+
+              response = retryResponse;
+            } else {
+              console.error(`Failed to sync blog ${blog.h1}:`, errorText);
+              results.failed++;
+              results.errors.push({
+                blogId: blog.id,
+                blogTitle: blog.h1,
+                error: errorText
+              });
+              continue;
+            }
+          } catch (parseError) {
+            console.error(`Failed to sync blog ${blog.h1}:`, errorText);
+            results.failed++;
+            results.errors.push({
+              blogId: blog.id,
+              blogTitle: blog.h1,
+              error: errorText
+            });
+            continue;
+          }
+        }
+
+        const item = await response.json();
+
+        // Publish the item
+        const publishResponse = await fetch(
+          `https://api.webflow.com/v2/collections/${BLOGS_COLLECTION_ID}/items/publish`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${webflowToken}`,
+              'Content-Type': 'application/json',
+              'accept': 'application/json'
+            },
+            body: JSON.stringify({ itemIds: [item.id] })
+          }
+        );
+
+        if (!publishResponse.ok) {
+          console.error(`Failed to publish blog ${blog.h1}`);
+        }
+
+        results.successful++;
+
+      } catch (error) {
+        console.error(`Error syncing blog ${blog.h1}:`, error);
+        results.failed++;
+        results.errors.push({
+          blogId: blog.id,
+          blogTitle: blog.h1,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
     }
-
-    const result = await response.json();
 
     return NextResponse.json({
       success: true,
-      message: `Successfully synced ${blogs.length} blog(s) to Webflow`,
-      synced: blogs.length,
-      data: result,
+      message: `Synced ${results.successful} of ${blogs.length} blog(s) to Webflow`,
+      synced: results.successful,
+      failed: results.failed,
+      errors: results.errors,
     });
   } catch (error) {
     console.error('Sync content error:', error);
