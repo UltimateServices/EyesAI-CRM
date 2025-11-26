@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       .from('blogs')
       .select(`
         *,
-        companies!inner(id, name, organization_id)
+        companies!inner(id, name, organization_id, webflow_slug)
       `)
       .eq('companies.organization_id', membership.organization_id)
       .eq('status', 'published');
@@ -108,8 +108,9 @@ export async function POST(request: NextRequest) {
         // Generate slug from blog title
         const slug = `${blog.h1.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${blog.id.substring(0, 8)}`;
 
-        // Generate company slug to find the profile
-        const companySlug = `${blog.companies.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${blog.company_id.substring(0, 8)}`;
+        // Use stored webflow_slug if available, otherwise generate one
+        const companySlug = blog.companies.webflow_slug ||
+          `${blog.companies.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${blog.company_id.substring(0, 8)}`;
 
         // Find the Webflow Profile ID for this company
         const profileId = await findProfileId(companySlug, webflowToken);

@@ -2,11 +2,26 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 
+// Webflow API constants
+const WEBFLOW_SITE_ID = process.env.WEBFLOW_SITE_ID || '68db778020fc2ac5c78f401a';
+const PROFILES_COLLECTION_ID = '6919a7f067ba553645e406a6';
+const WEBFLOW_PREVIEW_DOMAIN = process.env.WEBFLOW_PREVIEW_DOMAIN || 'https://eyesai.ai';
+
 // POST /api/webflow/publish-company - Publish a single company to Webflow
 export async function POST(request: NextRequest) {
   try {
     const cookieStore = await cookies();
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+
+    // Get Webflow token from environment
+    const webflowToken = process.env.WEBFLOW_CMS_SITE_API_TOKEN;
+
+    if (!webflowToken) {
+      return NextResponse.json(
+        { error: 'Webflow API token not configured in environment' },
+        { status: 500 }
+      );
+    }
 
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -32,27 +47,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'companyId is required' }, { status: 400 });
     }
 
-    // Get Webflow settings
-    const { data: settings, error: settingsError } = await supabase
-      .from('webflow_settings')
-      .select('*')
-      .eq('organization_id', membership.organization_id)
-      .single();
-
-    if (settingsError || !settings) {
-      return NextResponse.json(
-        { error: 'Webflow settings not configured. Please configure in Settings.' },
-        { status: 400 }
-      );
-    }
-
-    if (!settings.webflow_app_url || !settings.webflow_api_token || !settings.crm_api_key) {
-      return NextResponse.json(
-        { error: 'Incomplete Webflow settings. Please complete configuration in Settings.' },
-        { status: 400 }
-      );
-    }
-
     // Fetch the company
     const { data: company, error: companyError } = await supabase
       .from('companies')
@@ -65,58 +59,202 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Company not found' }, { status: 404 });
     }
 
-    // Generate slug and social handle
-    const slug = company.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    const socialHandle = '@' + company.name.toLowerCase().replace(/[^a-z0-9]+/g, '');
+    // Use existing webflow_slug if available, otherwise generate new one
+    const baseSlug = `${company.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${company.id.substring(0, 8)}`;
+    const slug = company.webflow_slug || baseSlug;
 
-    // Map company to Webflow profile schema (matching bridge app spec exactly)
-    const profile = {
-      id: company.id,
-      name: company.name,
-      slug: slug,
-      socialHandle: socialHandle,
-      shortDescription: company.tagline || company.description || '',
-      city: company.city || '',
-      state: company.state || '',
-      websiteUrl: company.website || '',
-      phoneNumber: company.phone || '',
-      emailAddress: company.email || '',
-      spotlight: company.status === 'ACTIVE',
-      directory: true,
-      packageType: (company.plan || 'DISCOVER').toLowerCase()
+    // Map to Webflow field names
+    const webflowProfile = {
+      fieldData: {
+        // Required fields
+        name: company.name,
+        slug: slug,
+
+        // Profile info
+        'business-name': company.name,
+        'social-handle': `@${company.name.toLowerCase().replace(/[^a-z0-9]+/g, '')}`,
+        'short-description': company.tagline || company.about || '',
+
+        // Contact info
+        city: company.city || '',
+        state: company.state || '',
+        'visit-website-2': company.website || '',
+        'call-now-2': company.phone?.replace(/[^0-9+]/g, '') || '',
+        email: company.email || '',
+
+        // Visibility settings
+        spotlight: company.status === 'ACTIVE',
+        directory: true,
+
+        // Package type (must be 'discover' or 'verified')
+        'package-type': (company.plan?.toLowerCase() === 'verified' || company.plan?.toLowerCase() === 'premium') ? 'verified' : 'discover',
+
+        // Additional details
+        'about-description': company.about || '',
+        'ai-summary': company.ai_summary || '',
+        'about-tag1': company.tag1 || '',
+        'about-tag2': company.tag2 || '',
+        'about-tag3': company.tag3 || '',
+        'about-tag4': company.tag4 || '',
+        'pricing-information': company.pricing_info || '',
+
+        // Social media links
+        'facebook-url': company.facebook_url || company.facebookUrl || '',
+        'instagram-url': company.instagram_url || company.instagramUrl || '',
+        'youtube-url': company.youtube_url || company.youtubeUrl || '',
+
+        // Images
+        'profile-image': company.logo_url || company.logoUrl ? { url: company.logo_url || company.logoUrl } : undefined,
+
+        // Schema JSON for SEO/structured data
+        'schema-json': JSON.stringify({
+          googleMapsUrl: company.google_maps_url || company.googleMapsUrl || '',
+          yelpUrl: company.yelp_url || company.yelpUrl || '',
+          address: company.address || '',
+          zip: company.zip || '',
+        })
+      }
     };
 
-    // Send to Webflow bridge app (matches bridge app format)
-    const webflowResponse = await fetch(`${settings.webflow_app_url}/api/sync/profiles`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        apiKey: settings.crm_api_key,
-        profiles: [profile], // Bridge app expects array
-      }),
+    // Remove undefined fields
+    Object.keys(webflowProfile.fieldData).forEach(key => {
+      if (webflowProfile.fieldData[key as keyof typeof webflowProfile.fieldData] === undefined) {
+        delete webflowProfile.fieldData[key as keyof typeof webflowProfile.fieldData];
+      }
     });
 
-    if (!webflowResponse.ok) {
-      const errorData = await webflowResponse.json().catch(() => ({}));
-      return NextResponse.json(
+    // Check if profile already exists
+    const listResponse = await fetch(
+      `https://api.webflow.com/v2/collections/${PROFILES_COLLECTION_ID}/items`,
+      {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${webflowToken}`,
+          'accept': 'application/json'
+        }
+      }
+    );
+
+    let existingItem = null;
+    if (listResponse.ok) {
+      const listData = await listResponse.json();
+      existingItem = listData.items?.find((item: any) => item.fieldData?.slug === slug);
+    }
+
+    // Create or update the profile
+    let response;
+    if (existingItem) {
+      // Update existing item
+      console.log(`Updating existing profile: ${company.name}`);
+      response = await fetch(
+        `https://api.webflow.com/v2/collections/${PROFILES_COLLECTION_ID}/items/${existingItem.id}`,
         {
-          error: 'Failed to publish to Webflow',
-          details: errorData.error || webflowResponse.statusText,
-        },
-        { status: 500 }
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${webflowToken}`,
+            'Content-Type': 'application/json',
+            'accept': 'application/json'
+          },
+          body: JSON.stringify(webflowProfile)
+        }
+      );
+    } else {
+      // Create new item
+      console.log(`Creating new profile: ${company.name}`);
+      response = await fetch(
+        `https://api.webflow.com/v2/collections/${PROFILES_COLLECTION_ID}/items`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${webflowToken}`,
+            'Content-Type': 'application/json',
+            'accept': 'application/json'
+          },
+          body: JSON.stringify(webflowProfile)
+        }
       );
     }
 
-    const result = await webflowResponse.json();
+    if (!response.ok) {
+      const errorText = await response.text();
+
+      try {
+        const errorData = JSON.parse(errorText);
+
+        // Check if it's a slug conflict error (item was archived)
+        if (errorData.code === 'validation_error' &&
+            errorData.details?.some((d: any) => d.param === 'slug' && d.description?.includes('already in database'))) {
+
+          console.log(`Slug conflict for ${company.name}, generating new slug with timestamp`);
+
+          // Generate a new slug with timestamp to avoid archived item conflicts
+          const newSlug = `${company.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${company.id.substring(0, 8)}-${Date.now()}`;
+          webflowProfile.fieldData.slug = newSlug;
+
+          // Try creating again with the new slug
+          const retryResponse = await fetch(
+            `https://api.webflow.com/v2/collections/${PROFILES_COLLECTION_ID}/items`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${webflowToken}`,
+                'Content-Type': 'application/json',
+                'accept': 'application/json'
+              },
+              body: JSON.stringify(webflowProfile)
+            }
+          );
+
+          if (!retryResponse.ok) {
+            const retryError = await retryResponse.text();
+            return NextResponse.json(
+              { error: 'Failed to publish to Webflow', details: retryError },
+              { status: 500 }
+            );
+          }
+
+          response = retryResponse;
+        } else {
+          return NextResponse.json(
+            { error: 'Failed to publish to Webflow', details: errorText },
+            { status: 500 }
+          );
+        }
+      } catch (parseError) {
+        return NextResponse.json(
+          { error: 'Failed to publish to Webflow', details: errorText },
+          { status: 500 }
+        );
+      }
+    }
+
+    const item = await response.json();
+
+    // Publish the item
+    const publishResponse = await fetch(
+      `https://api.webflow.com/v2/collections/${PROFILES_COLLECTION_ID}/items/publish`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${webflowToken}`,
+          'Content-Type': 'application/json',
+          'accept': 'application/json'
+        },
+        body: JSON.stringify({ itemIds: [item.id] })
+      }
+    );
+
+    if (!publishResponse.ok) {
+      console.error(`Failed to publish ${company.name}`);
+      // Continue anyway, item was created
+    }
 
     // Update company with sync status
     const { error: updateError } = await supabase
       .from('companies')
       .update({
         webflow_published: true,
-        webflow_slug: slug,
+        webflow_slug: webflowProfile.fieldData.slug,
         last_synced_at: new Date().toISOString(),
       })
       .eq('id', companyId);
@@ -129,8 +267,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: `Successfully published ${company.name} to Webflow`,
-      result,
-      liveUrl: `https://eyesai.ai/profiles/${slug}`,
+      itemId: item.id,
+      slug: webflowProfile.fieldData.slug,
+      liveUrl: `${WEBFLOW_PREVIEW_DOMAIN}/profile/${webflowProfile.fieldData.slug}`,
     });
   } catch (error) {
     console.error('Publish company error:', error);

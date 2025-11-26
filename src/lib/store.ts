@@ -260,6 +260,8 @@ export const useStore = create<StoreState>((set, get) => ({
         id: row.id,
         organizationId: row.organization_id,
         name: row.name,
+
+        // Contact info
         website: row.website,
         phone: row.phone,
         email: row.email,
@@ -267,19 +269,38 @@ export const useStore = create<StoreState>((set, get) => ({
         city: row.city,
         state: row.state,
         zip: row.zip,
+
+        // Business info
+        tagline: row.tagline,
+        about: row.about,
+        ai_summary: row.ai_summary,
         status: row.status,
         plan: row.plan,
+
+        // Feature tags
+        tag1: row.tag1,
+        tag2: row.tag2,
+        tag3: row.tag3,
+        tag4: row.tag4,
+        pricing_info: row.pricing_info,
+
+        // Social media & links
         googleMapsUrl: row.google_maps_url,
         yelpUrl: row.yelp_url,
         facebookUrl: row.facebook_url,
+        instagramUrl: row.instagram_url,
+        youtubeUrl: row.youtube_url,
+
+        // Media
         logoUrl: row.logo_url,
+        mediaGallery: row.media_gallery || [],
+
+        // Webflow sync
         webflowPublished: row.webflow_published,
         webflowSlug: row.webflow_slug,
         lastSyncedAt: row.last_synced_at,
-        media: {
-          logo: row.logo_url,
-          gallery: row.media_gallery || [],
-        },
+
+        // Timestamps
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       }));
