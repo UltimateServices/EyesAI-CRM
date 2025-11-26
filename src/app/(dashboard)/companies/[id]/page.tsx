@@ -291,7 +291,7 @@ export default function CompanyDetailPage() {
                   className="text-green-600 hover:text-green-700 hover:bg-green-50"
                 >
                   <a
-                    href={`https://eyesai.ai/profiles/${company.webflowSlug}`}
+                    href={`${process.env.NEXT_PUBLIC_WEBFLOW_DOMAIN || 'http://eyesai.webflow.io'}/profile/${company.webflowSlug}`}
                     target="_blank"
                     rel="noopener noreferrer"
                   >

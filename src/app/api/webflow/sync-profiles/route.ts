@@ -75,8 +75,9 @@ export async function POST(request: NextRequest) {
 
     for (const company of companies) {
       try {
-        // Generate slug from company name
-        const slug = `${company.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${company.id.substring(0, 8)}`;
+        // Use existing webflow_slug if available, otherwise generate new one
+        const baseSlug = `${company.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${company.id.substring(0, 8)}`;
+        const slug = company.webflow_slug || baseSlug;
 
         // Map to Webflow field names
         const webflowProfile = {
@@ -107,8 +108,36 @@ export async function POST(request: NextRequest) {
             // Additional details
             'about-description': company.about || '',
             'ai-summary': company.ai_summary || '',
+            'about-tag1': company.tag1 || '',
+            'about-tag2': company.tag2 || '',
+            'about-tag3': company.tag3 || '',
+            'about-tag4': company.tag4 || '',
+            'pricing-information': company.pricing_info || '',
+
+            // Social media links
+            'facebook-url': company.facebook_url || company.facebookUrl || '',
+            'instagram-url': company.instagram_url || company.instagramUrl || '',
+            'youtube-url': company.youtube_url || company.youtubeUrl || '',
+
+            // Images
+            'profile-image': company.logo_url || company.logoUrl ? { url: company.logo_url || company.logoUrl } : undefined,
+
+            // Schema JSON for SEO/structured data
+            'schema-json': JSON.stringify({
+              googleMapsUrl: company.google_maps_url || company.googleMapsUrl || '',
+              yelpUrl: company.yelp_url || company.yelpUrl || '',
+              address: company.address || '',
+              zip: company.zip || '',
+            })
           }
         };
+
+        // Remove undefined fields
+        Object.keys(webflowProfile.fieldData).forEach(key => {
+          if (webflowProfile.fieldData[key as keyof typeof webflowProfile.fieldData] === undefined) {
+            delete webflowProfile.fieldData[key as keyof typeof webflowProfile.fieldData];
+          }
+        });
 
         // Check if profile already exists by fetching items and finding by slug
         const listResponse = await fetch(
@@ -234,6 +263,17 @@ export async function POST(request: NextRequest) {
         if (!publishResponse.ok) {
           console.error(`Failed to publish ${company.name}`);
         }
+
+        // Update company with the actual Webflow slug used
+        const finalSlug = webflowProfile.fieldData.slug;
+        await supabase
+          .from('companies')
+          .update({
+            webflow_published: true,
+            webflow_slug: finalSlug,
+            last_synced_at: new Date().toISOString(),
+          })
+          .eq('id', company.id);
 
         results.successful++;
 

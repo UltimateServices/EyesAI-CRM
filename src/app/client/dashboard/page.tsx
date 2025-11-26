@@ -27,6 +27,7 @@ export default function ClientDashboard() {
   const [hoveredDiscoverInfo, setHoveredDiscoverInfo] = useState(false);
   const { theme } = useTheme();
   const isDark = theme === 'dark';
+  const webflowDomain = process.env.NEXT_PUBLIC_WEBFLOW_DOMAIN || 'http://eyesai.webflow.io';
 
   useEffect(() => {
     const getUser = async () => {
@@ -331,7 +332,7 @@ export default function ClientDashboard() {
 
           <div className={`flex items-center gap-2 text-sm mb-6 ${isDark ? 'text-white/50' : 'text-slate-500'}`}>
             <ExternalLink className="w-4 h-4" />
-            <span>eyesai.ai/profile/major-dumpsters</span>
+            <span>{webflowDomain.replace(/^https?:\/\//, '')}/profile/your-company</span>
           </div>
 
           <div className={`pt-4 border-t ${isDark ? 'border-white/10' : 'border-emerald-200/50'}`}>

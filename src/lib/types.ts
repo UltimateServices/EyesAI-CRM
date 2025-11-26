@@ -19,6 +19,8 @@ export interface Company {
   id: string;
   organizationId?: string;
   name: string;
+
+  // Contact info
   website?: string;
   phone?: string;
   email?: string;
@@ -26,15 +28,38 @@ export interface Company {
   city?: string;
   state?: string;
   zip?: string;
+
+  // Business info
+  tagline?: string;
+  about?: string;
+  ai_summary?: string;
   status?: string;
   plan?: string;
+
+  // Feature tags
+  tag1?: string;
+  tag2?: string;
+  tag3?: string;
+  tag4?: string;
+  pricing_info?: string;
+
+  // Social media & links
   googleMapsUrl?: string;
   yelpUrl?: string;
   facebookUrl?: string;
+  instagramUrl?: string;
+  youtubeUrl?: string;
+
+  // Media
   logoUrl?: string;
+  mediaGallery?: any[];
+
+  // Webflow sync
   webflowPublished?: boolean;
   webflowSlug?: string;
   lastSyncedAt?: string;
+
+  // Timestamps
   createdAt?: string;
   updatedAt?: string;
 }
