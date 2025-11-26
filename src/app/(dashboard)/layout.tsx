@@ -17,18 +17,17 @@ import {
   User as UserIcon,
   Search,
   Bell,
-  ChevronDown
+  ChevronDown,
+  MessageSquare,
+  UserPlus
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { ChatNotificationProvider, useChatNotifications } from '@/contexts/ChatNotificationContext';
 
 const supabase = createClientComponentClient();
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function DashboardContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const currentUserRole = useStore((state) => state.currentUserRole);
@@ -36,18 +35,94 @@ export default function DashboardLayout({
 
   const [user, setUser] = useState<any>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [waitingCount, setWaitingCount] = useState(0);
 
   useEffect(() => {
+    let isMounted = true;
+
     const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push('/login');
-      } else {
-        setUser(user);
+      try {
+        const { data: { user }, error } = await supabase.auth.getUser();
+
+        if (!isMounted) return;
+
+        if (error) {
+          console.error('Auth check error:', error);
+          // Don't redirect on error - session might still be valid
+          return;
+        }
+
+        if (!user) {
+          // Only redirect if truly no user
+          router.push('/login');
+        } else {
+          setUser(user);
+        }
+      } catch (error) {
+        console.error('Auth error:', error);
+        // Don't redirect on exception
       }
     };
+
     getUser();
-  }, [router]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, []); // Only run once on mount
+
+  // Simple polling for waiting chats (every 10 seconds)
+  useEffect(() => {
+    if (!user) return;
+
+    const checkWaitingChats = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('chat_conversations')
+          .select('id')
+          .eq('status', 'waiting_human');
+
+        if (!error && data) {
+          const newCount = data.length;
+          if (newCount > waitingCount && newCount > 0) {
+            // New waiting chat - play sound
+            playNotificationSound();
+          }
+          setWaitingCount(newCount);
+        }
+      } catch (error) {
+        console.error('Error checking waiting chats:', error);
+      }
+    };
+
+    // Check immediately
+    checkWaitingChats();
+
+    // Then poll every 10 seconds
+    const interval = setInterval(checkWaitingChats, 10000);
+
+    return () => clearInterval(interval);
+  }, [user, waitingCount]);
+
+  const playNotificationSound = () => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      [0, 0.3].forEach((delay) => {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        oscillator.frequency.value = 880;
+        oscillator.type = 'sine';
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime + delay);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + delay + 0.3);
+        oscillator.start(audioContext.currentTime + delay);
+        oscillator.stop(audioContext.currentTime + delay + 0.3);
+      });
+    } catch (error) {
+      console.error('Error playing sound:', error);
+    }
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -65,7 +140,9 @@ export default function DashboardLayout({
 
   const navItems = [
     { href: '/dashboard', icon: LayoutDashboard, label: 'Overview' },
+    { href: '/new-clients', icon: UserPlus, label: 'New Clients' },
     { href: '/companies', icon: Building2, label: 'Companies' },
+    { href: '/support', icon: MessageSquare, label: 'Support' },
     { href: '/settings', icon: Settings, label: 'Settings' },
   ];
 
@@ -86,7 +163,7 @@ export default function DashboardLayout({
       {/* Sidebar */}
       <aside className={`
         fixed top-0 left-0 z-50 h-full w-64 bg-white/80 backdrop-blur-xl border-r border-slate-200/60
-        transform transition-transform duration-200 ease-in-out
+        transform transition-transition duration-200 ease-in-out
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         lg:translate-x-0
       `}>
@@ -210,10 +287,17 @@ export default function DashboardLayout({
 
             {/* Right Side */}
             <div className="flex items-center gap-3">
-              <button className="p-2 hover:bg-slate-100 rounded-xl transition-colors relative">
-                <Bell className="w-5 h-5 text-slate-600" />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-blue-500 rounded-full"></span>
-              </button>
+              <Link
+                href="/support"
+                className={`p-2 hover:bg-slate-100 rounded-xl transition-all relative ${waitingCount > 0 ? 'animate-pulse' : ''}`}
+              >
+                <Bell className={`w-5 h-5 ${waitingCount > 0 ? 'text-yellow-600' : 'text-slate-600'}`} />
+                {waitingCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center animate-pulse">
+                    {waitingCount}
+                  </span>
+                )}
+              </Link>
 
               <div className="hidden sm:flex items-center gap-3 pl-3 border-l border-slate-200">
                 <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-medium text-sm">
@@ -238,4 +322,12 @@ export default function DashboardLayout({
       </div>
     </div>
   );
+}
+
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return <DashboardContent>{children}</DashboardContent>;
 }

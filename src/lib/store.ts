@@ -273,6 +273,9 @@ export const useStore = create<StoreState>((set, get) => ({
         yelpUrl: row.yelp_url,
         facebookUrl: row.facebook_url,
         logoUrl: row.logo_url,
+        webflowPublished: row.webflow_published,
+        webflowSlug: row.webflow_slug,
+        lastSyncedAt: row.last_synced_at,
         media: {
           logo: row.logo_url,
           gallery: row.media_gallery || [],
