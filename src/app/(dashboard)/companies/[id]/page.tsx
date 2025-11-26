@@ -13,17 +13,19 @@ import MediaGallery from '@/components/company/media-gallery';
 import { Reviews } from '@/components/company/reviews';
 import { MonthlyDeliverables } from '@/components/company/monthly-deliverables';
 import BlogBuilder from '@/components/company/blog-builder';
-import { 
-  ArrowLeft, 
-  Building2, 
-  Globe, 
-  Phone, 
-  MapPin, 
+import {
+  ArrowLeft,
+  Building2,
+  Globe,
+  Phone,
+  MapPin,
   Calendar,
   Clock,
   Trash2,
   Edit,
-  Loader2
+  Loader2,
+  Upload,
+  ExternalLink
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -43,6 +45,7 @@ export default function CompanyDetailPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [deleting, setDeleting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -114,6 +117,44 @@ export default function CompanyDetailPage() {
     }
   };
 
+  const handleSync = async () => {
+    if (!confirm(`Sync ${company.name} to Webflow?\n\nThis will publish or update the profile on your Webflow site.`)) {
+      return;
+    }
+
+    setSyncing(true);
+
+    try {
+      const response = await fetch('/api/webflow/publish-company', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ companyId: company.id }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error('Sync error response:', data);
+        const errorMsg = data.error || 'Failed to sync';
+        const errorDetails = data.details ? `\n\nDetails: ${data.details}` : '';
+        throw new Error(errorMsg + errorDetails);
+      }
+
+      console.log('Sync success:', data);
+      alert(`✅ ${data.message}\n\nLive at: ${data.liveUrl}`);
+
+      // Refresh company data to show updated sync status
+      await fetchCompanies();
+    } catch (error: any) {
+      alert(`❌ Failed to sync: ${error.message}`);
+      console.error('Sync error:', error);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <div className="p-6 max-w-[1800px] mx-auto space-y-6">
       <Button variant="ghost" size="sm" asChild>
@@ -158,6 +199,11 @@ export default function CompanyDetailPage() {
                   {company.status || 'active'}
                 </Badge>
                 {company.plan && <Badge variant="outline">{company.plan}</Badge>}
+                {company.webflowPublished && (
+                  <Badge className="bg-green-100 text-green-700">
+                    Published
+                  </Badge>
+                )}
               </div>
 
               <div className="space-y-1 text-sm text-slate-600">
@@ -199,9 +245,15 @@ export default function CompanyDetailPage() {
                 </div>
               )}
               {company.updatedAt && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 mb-1">
                   <Clock className="w-4 h-4" />
                   Updated {new Date(company.updatedAt).toLocaleDateString()}
+                </div>
+              )}
+              {company.lastSyncedAt && (
+                <div className="flex items-center gap-2">
+                  <Upload className="w-4 h-4" />
+                  Synced {new Date(company.lastSyncedAt).toLocaleDateString()}
                 </div>
               )}
             </div>
@@ -210,12 +262,50 @@ export default function CompanyDetailPage() {
                 <Edit className="w-4 h-4 mr-2" />
                 Edit
               </Button>
-              
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSync}
+                disabled={syncing}
+                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+              >
+                {syncing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Syncing...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4 mr-2" />
+                    Sync
+                  </>
+                )}
+              </Button>
+
+              {company.webflowPublished && company.webflowSlug && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  asChild
+                  className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                >
+                  <a
+                    href={`https://eyesai.ai/profiles/${company.webflowSlug}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    View Live
+                  </a>
+                </Button>
+              )}
+
               {['admin', 'manager'].includes(currentUserRole || '') && (
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={handleDelete} 
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDelete}
                   disabled={deleting}
                   className="text-red-600 hover:text-red-700 hover:bg-red-50"
                 >

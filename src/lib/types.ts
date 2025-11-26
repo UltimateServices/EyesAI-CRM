@@ -32,6 +32,9 @@ export interface Company {
   yelpUrl?: string;
   facebookUrl?: string;
   logoUrl?: string;
+  webflowPublished?: boolean;
+  webflowSlug?: string;
+  lastSyncedAt?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -159,6 +162,53 @@ export interface Task {
   updatedAt?: string;
 }
 
+export interface MediaItem {
+  id: string;
+  companyId: string;
+  organizationId?: string;
+
+  // File info
+  fileName: string;
+  fileUrl: string;
+  fileType: 'image' | 'video' | 'document';
+  fileSize: number;
+  mimeType?: string;
+
+  // Client-facing category (simple)
+  category: 'logo' | 'photo' | 'video';
+
+  // VA/Worker internal tags (detailed)
+  // logo, exterior, interior, team, work-in-action, before-after, equipment, review-graphics
+  internalTags?: string[];
+
+  // Status: pending (new), active (VA approved), inactive (client deactivated)
+  status: 'pending' | 'active' | 'inactive';
+
+  // Ordering
+  priority: number;
+
+  // Upload tracking
+  uploadedByType: 'worker' | 'client';
+  uploadedById?: string;
+
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// Worker internal category options
+export const INTERNAL_CATEGORIES = [
+  { id: 'logo', label: 'Logo / Branding', color: 'purple' },
+  { id: 'exterior', label: 'Exterior', color: 'emerald' },
+  { id: 'interior', label: 'Interior', color: 'amber' },
+  { id: 'team', label: 'Team / Staff', color: 'blue' },
+  { id: 'work-in-action', label: 'Work in Action', color: 'orange' },
+  { id: 'before-after', label: 'Before & After', color: 'pink' },
+  { id: 'equipment', label: 'Equipment / Fleet', color: 'slate' },
+  { id: 'review-graphics', label: 'Review Graphics', color: 'cyan' },
+] as const;
+
+export type InternalCategory = typeof INTERNAL_CATEGORIES[number]['id'];
+
 export interface Blog {
   id: string;
   companyId: string;
@@ -194,7 +244,61 @@ export interface Blog {
   status?: 'draft' | 'published';
   publishedUrl?: string;
   publishedAt?: string;
-  
+
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface ChatConversation {
+  id: string;
+  organizationId?: string;
+
+  // Visitor info
+  visitorName?: string;
+  visitorEmail?: string;
+  visitorPhone?: string;
+  visitorId?: string; // For tracking returning visitors
+
+  // Company association (if they came from a specific company page)
+  companyId?: string;
+
+  // Status
+  status: 'ai_only' | 'waiting_human' | 'active_human' | 'resolved';
+
+  // Assignment
+  assignedVaId?: string;
+  assignedVaName?: string;
+
+  // Metadata
+  source: 'webflow' | 'client_portal';
+  pageUrl?: string;
+  userAgent?: string;
+
+  // Timestamps
+  lastMessageAt?: string;
+  resolvedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  conversationId: string;
+
+  // Sender info
+  senderType: 'visitor' | 'ai' | 'va';
+  senderId?: string; // VA user ID if sender is VA
+  senderName?: string;
+
+  // Message content
+  messageText: string;
+  messageType: 'text' | 'image' | 'file';
+  fileUrl?: string;
+  fileName?: string;
+
+  // Status
+  isRead: boolean;
+  readAt?: string;
+
+  createdAt?: string;
 }

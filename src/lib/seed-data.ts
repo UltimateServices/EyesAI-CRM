@@ -47,7 +47,7 @@ export const SEED_COMPANIES: Company[] = [
 
   // ACTIVE - DISCOVER
   {
-    id: 'c2',
+    id: '60db5fa2-424a-4a07-91de-963271a4ea31',
     name: 'Major Dumpsters',
     website: 'https://majordumpsters.com',
     plan: 'DISCOVER',
@@ -56,7 +56,7 @@ export const SEED_COMPANIES: Company[] = [
     assignedVaName: 'John VA',
     contactEmail: 'hello@majordumpsters.com',
     phone: '(555) 123-4567',
-    logoUrl: 'https://images.unsplash.com/photo-1621905251918-48416bd8575a?w=200&h=200&fit=crop',
+    logoUrl: '/major-dumpsters-logo.png',
     createdAt: '2025-10-01T09:00:00Z',
     updatedAt: '2025-10-01T09:00:00Z',
   },

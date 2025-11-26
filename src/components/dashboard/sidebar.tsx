@@ -2,17 +2,19 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { 
-  LayoutDashboard, 
-  Building2, 
-  CheckSquare, 
-  BarChart3, 
-  Settings 
+import {
+  LayoutDashboard,
+  Building2,
+  CheckSquare,
+  BarChart3,
+  Settings,
+  UserPlus
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { name: 'New Clients', href: '/new-clients', icon: UserPlus },
   { name: 'Companies', href: '/companies', icon: Building2 },
   { name: 'Tasks', href: '/tasks', icon: CheckSquare },
   { name: 'Reports', href: '/reports', icon: BarChart3 },

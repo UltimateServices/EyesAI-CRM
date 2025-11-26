@@ -16,6 +16,7 @@ import {
   User,
   ExternalLink,
   Loader2,
+  Upload,
 } from 'lucide-react';
 import Link from 'next/link';
 import { format } from 'date-fns';
@@ -30,6 +31,7 @@ export default function CompaniesPage() {
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [planFilter, setPlanFilter] = useState<string>('ALL');
   const [loading, setLoading] = useState(true);
+  const [publishing, setPublishing] = useState<string | null>(null);
 
   // Fetch companies and intakes from Supabase on mount
   useEffect(() => {
@@ -45,14 +47,17 @@ export default function CompaniesPage() {
     loadData();
   }, [fetchCompanies, fetchIntakes]);
 
-  const filteredCompanies = companies.filter((company) => {
-    const matchesSearch = company.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      company.website.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'ALL' || company.status === statusFilter;
-    const matchesPlan = planFilter === 'ALL' || company.plan === planFilter;
-    
-    return matchesSearch && matchesStatus && matchesPlan;
-  });
+  // Filter out NEW companies - they show in New Clients tab instead
+  const filteredCompanies = companies
+    .filter((company) => company.status !== 'NEW')
+    .filter((company) => {
+      const matchesSearch = company.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        company.website.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesStatus = statusFilter === 'ALL' || company.status === statusFilter;
+      const matchesPlan = planFilter === 'ALL' || company.plan === planFilter;
+
+      return matchesSearch && matchesStatus && matchesPlan;
+    });
 
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
@@ -69,6 +74,38 @@ export default function CompaniesPage() {
       VERIFIED: 'bg-blue-100 text-blue-700',
     };
     return colors[plan] || 'bg-slate-100 text-slate-700';
+  };
+
+  const handleSyncToWebflow = async (companyId: string, companyName: string, e: React.MouseEvent) => {
+    e.preventDefault(); // Prevent navigation to company detail page
+    e.stopPropagation();
+
+    if (!confirm(`Sync ${companyName} to Webflow?\n\nThis will publish or update the profile on your Webflow site.`)) return;
+
+    setPublishing(companyId);
+
+    try {
+      const response = await fetch('/api/webflow/publish-company', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ companyId }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to sync');
+      }
+
+      alert(`✅ ${data.message}`);
+    } catch (error: any) {
+      alert(`❌ Failed to sync: ${error.message}`);
+      console.error('Sync error:', error);
+    } finally {
+      setPublishing(null);
+    }
   };
 
   if (loading) {
@@ -190,6 +227,25 @@ export default function CompaniesPage() {
                         <Badge variant="secondary" className={getPlanColor(company.plan)}>
                           {company.plan}
                         </Badge>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={(e) => handleSyncToWebflow(company.id, company.name, e)}
+                          disabled={publishing === company.id}
+                          className="gap-1.5"
+                        >
+                          {publishing === company.id ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              Syncing...
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="w-3.5 h-3.5" />
+                              Sync
+                            </>
+                          )}
+                        </Button>
                       </div>
                     </div>
 
