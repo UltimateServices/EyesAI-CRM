@@ -19,8 +19,6 @@ import {
 import Link from 'next/link';
 import { useTheme } from '../ThemeContext';
 
-const supabase = createClientComponentClient();
-
 export default function ClientDashboard() {
   const [user, setUser] = useState<any>(null);
   const [showEyesAILogo, setShowEyesAILogo] = useState(true);
@@ -32,6 +30,8 @@ export default function ClientDashboard() {
 
   useEffect(() => {
     const getUser = async () => {
+      // Initialize Supabase client inside the effect to avoid build-time errors
+      const supabase = createClientComponentClient();
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
     };
