@@ -16,6 +16,12 @@ export async function POST(request: NextRequest) {
     // Test connection to Webflow bridge app
     const testEndpoint = `${webflowAppUrl}/api/test`;
 
+    console.log('Testing Webflow connection:', {
+      endpoint: testEndpoint,
+      hasCrmApiKey: !!crmApiKey,
+      hasWebflowToken: !!webflowApiToken,
+    });
+
     const response = await fetch(testEndpoint, {
       method: 'GET',
       headers: {
@@ -25,13 +31,21 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    console.log('Webflow response status:', response.status);
+
     if (!response.ok) {
       const errorText = await response.text();
+      console.error('Webflow connection error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText
+      });
       return NextResponse.json(
         {
           error: 'Connection failed',
           details: errorText,
-          status: response.status
+          status: response.status,
+          endpoint: testEndpoint
         },
         { status: 500 }
       );
