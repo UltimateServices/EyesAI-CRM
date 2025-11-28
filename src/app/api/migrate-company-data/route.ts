@@ -105,15 +105,17 @@ export async function POST(req: NextRequest) {
 
       // Extract from about section
       if (romaData.about_and_badges) {
-        migrationData.about = migrationData.about || romaData.about_and_badges.about_text;
+        // Try about_text first, fall back to ai_summary_120w if about_text doesn't exist
+        migrationData.about = migrationData.about || romaData.about_and_badges.about_text || romaData.about_and_badges.ai_summary_120w;
         migrationData.ai_summary = migrationData.ai_summary || romaData.about_and_badges.ai_summary_120w;
 
-        // Extract badges/tags
-        if (romaData.about_and_badges.badges && Array.isArray(romaData.about_and_badges.badges)) {
-          migrationData.tag1 = romaData.about_and_badges.badges[0];
-          migrationData.tag2 = romaData.about_and_badges.badges[1];
-          migrationData.tag3 = romaData.about_and_badges.badges[2];
-          migrationData.tag4 = romaData.about_and_badges.badges[3];
+        // Extract badges/tags (try both badges and company_badges)
+        const badgesArray = romaData.about_and_badges.badges || romaData.about_and_badges.company_badges;
+        if (badgesArray && Array.isArray(badgesArray)) {
+          migrationData.tag1 = badgesArray[0];
+          migrationData.tag2 = badgesArray[1];
+          migrationData.tag3 = badgesArray[2];
+          migrationData.tag4 = badgesArray[3];
         }
       }
 
@@ -134,6 +136,34 @@ export async function POST(req: NextRequest) {
         migrationData.website = migrationData.website || loc.website;
       }
 
+      // Extract from locations_and_hours (newer format)
+      if (romaData.locations_and_hours?.locations?.[0]) {
+        const loc = romaData.locations_and_hours.locations[0];
+        const fullAddress = loc.address_line1 || '';
+        // Parse address like "990 Clement Drive, Rossville, TN 38066"
+        if (fullAddress && !migrationData.address) {
+          const parts = fullAddress.split(',').map(p => p.trim());
+          if (parts.length >= 3) {
+            migrationData.address = parts[0]; // "990 Clement Drive"
+            migrationData.city = parts[1]; // "Rossville"
+            const stateZip = parts[2].split(' '); // ["TN", "38066"]
+            migrationData.state = stateZip[0];
+            migrationData.zip = stateZip[1];
+          }
+        }
+        migrationData.google_maps_url = migrationData.google_maps_url || loc.google_maps_url;
+      }
+
+      // Extract from get_in_touch
+      if (romaData.get_in_touch) {
+        // city_state like "Rossville, TN"
+        if (romaData.get_in_touch.city_state && !migrationData.city) {
+          const cityState = romaData.get_in_touch.city_state.split(',').map(p => p.trim());
+          migrationData.city = cityState[0];
+          migrationData.state = cityState[1];
+        }
+      }
+
       // Extract social media
       if (romaData.social_media) {
         const social = romaData.social_media;
@@ -146,6 +176,11 @@ export async function POST(req: NextRequest) {
       // Extract pricing
       if (romaData.pricing) {
         migrationData.pricing_info = migrationData.pricing_info || romaData.pricing.pricing_information;
+      }
+
+      // Extract pricing_information (newer format)
+      if (romaData.pricing_information) {
+        migrationData.pricing_info = migrationData.pricing_info || romaData.pricing_information.pricing_overview;
       }
     }
 
