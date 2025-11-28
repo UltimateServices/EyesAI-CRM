@@ -21,7 +21,9 @@ import {
   Video,
   Mail,
   Circle,
-  CheckCircle2
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 interface OnboardingStep {
@@ -47,6 +49,7 @@ export default function NewClientsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [companySteps, setCompanySteps] = useState<CompanySteps>({});
   const [processingSteps, setProcessingSteps] = useState<{ [key: string]: boolean }>({});
+  const [expandedCompanies, setExpandedCompanies] = useState<{ [key: string]: boolean }>({});
   const [formData, setFormData] = useState({
     name: '',
     website: '',
@@ -528,9 +531,32 @@ export default function NewClientsPage() {
 
                     {/* Progress Bar */}
                     <div className="mt-4">
-                      <div className="flex items-center gap-2 text-sm text-slate-600 mb-2">
-                        <span>Onboarding Progress</span>
-                        <span className="font-semibold">{Math.round((completedSteps / steps.length) * 100)}%</span>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2 text-sm text-slate-600">
+                          <span>Onboarding Progress</span>
+                          <span className="font-semibold">{Math.round((completedSteps / steps.length) * 100)}%</span>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setExpandedCompanies(prev => ({
+                            ...prev,
+                            [company.id]: !prev[company.id]
+                          }))}
+                          className="gap-2"
+                        >
+                          {expandedCompanies[company.id] ? (
+                            <>
+                              Hide Steps
+                              <ChevronUp className="w-4 h-4" />
+                            </>
+                          ) : (
+                            <>
+                              Show Steps
+                              <ChevronDown className="w-4 h-4" />
+                            </>
+                          )}
+                        </Button>
                       </div>
                       <div className="w-full bg-slate-200 rounded-full h-2">
                         <div
@@ -542,8 +568,9 @@ export default function NewClientsPage() {
                   </div>
                 </div>
 
-                {/* Onboarding Steps */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Onboarding Steps - Collapsible */}
+                {expandedCompanies[company.id] && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
                   {steps.map((step) => {
                     const Icon = step.icon;
                     return (
@@ -605,7 +632,8 @@ export default function NewClientsPage() {
                       </Card>
                     );
                   })}
-                </div>
+                  </div>
+                )}
               </Card>
             );
           })
