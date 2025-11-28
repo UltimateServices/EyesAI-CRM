@@ -87,27 +87,27 @@ export async function POST(req: NextRequest) {
     if (intake.roma_data) {
       const romaData = intake.roma_data;
 
-      // Extract from hero section
+      // Extract from hero section (roma_data takes priority over existing company data)
       if (romaData.hero) {
-        migrationData.business_name = migrationData.business_name || romaData.hero.business_name || romaData.hero.company_name;
-        migrationData.tagline = migrationData.tagline || romaData.hero.tagline;
-        migrationData.logo_url = migrationData.logo_url || romaData.hero.logo_url;
+        migrationData.business_name = romaData.hero.business_name || romaData.hero.company_name || migrationData.business_name;
+        migrationData.tagline = romaData.hero.tagline || migrationData.tagline;
+        migrationData.logo_url = romaData.hero.logo_url || migrationData.logo_url;
 
         // Extract quick actions
         if (romaData.hero.quick_actions) {
           const qa = romaData.hero.quick_actions;
-          migrationData.phone = migrationData.phone || qa.call_tel?.replace('tel:', '');
-          migrationData.website = migrationData.website || qa.website_url;
-          migrationData.email = migrationData.email || qa.email_mailto?.replace('mailto:', '');
-          migrationData.google_maps_url = migrationData.google_maps_url || qa.directions_url;
+          migrationData.phone = qa.call_tel?.replace('tel:', '') || migrationData.phone;
+          migrationData.website = qa.website_url || migrationData.website;
+          migrationData.email = qa.email_mailto?.replace('mailto:', '') || migrationData.email;
+          migrationData.google_maps_url = qa.directions_url || qa.maps_link || migrationData.google_maps_url;
         }
       }
 
-      // Extract from about section
+      // Extract from about section (roma_data takes priority)
       if (romaData.about_and_badges) {
         // Try about_text first, fall back to ai_summary_120w if about_text doesn't exist
-        migrationData.about = migrationData.about || romaData.about_and_badges.about_text || romaData.about_and_badges.ai_summary_120w;
-        migrationData.ai_summary = migrationData.ai_summary || romaData.about_and_badges.ai_summary_120w;
+        migrationData.about = romaData.about_and_badges.about_text || romaData.about_and_badges.ai_summary_120w || migrationData.about;
+        migrationData.ai_summary = romaData.about_and_badges.ai_summary_120w || migrationData.ai_summary;
 
         // Extract badges/tags (try both badges and company_badges)
         const badgesArray = romaData.about_and_badges.badges || romaData.about_and_badges.company_badges;
@@ -119,29 +119,29 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Extract from ai_overview
+      // Extract from ai_overview (roma_data takes priority)
       if (romaData.ai_overview) {
-        migrationData.ai_summary = migrationData.ai_summary || romaData.ai_overview.overview_line;
+        migrationData.ai_summary = romaData.ai_overview.overview_line || migrationData.ai_summary;
       }
 
-      // Extract from location section
+      // Extract from location section (roma_data takes priority)
       if (romaData.location_and_contact) {
         const loc = romaData.location_and_contact;
-        migrationData.address = migrationData.address || loc.address;
-        migrationData.city = migrationData.city || loc.city;
-        migrationData.state = migrationData.state || loc.state;
-        migrationData.zip = migrationData.zip || loc.zip;
-        migrationData.phone = migrationData.phone || loc.phone;
-        migrationData.email = migrationData.email || loc.email;
-        migrationData.website = migrationData.website || loc.website;
+        migrationData.address = loc.address || migrationData.address;
+        migrationData.city = loc.city || migrationData.city;
+        migrationData.state = loc.state || migrationData.state;
+        migrationData.zip = loc.zip || migrationData.zip;
+        migrationData.phone = loc.phone || migrationData.phone;
+        migrationData.email = loc.email || migrationData.email;
+        migrationData.website = loc.website || migrationData.website;
       }
 
-      // Extract from locations_and_hours (newer format)
+      // Extract from locations_and_hours (newer format, takes priority)
       if (romaData.locations_and_hours?.locations?.[0]) {
         const loc = romaData.locations_and_hours.locations[0];
         const fullAddress = loc.address_line1 || '';
         // Parse address like "990 Clement Drive, Rossville, TN 38066"
-        if (fullAddress && !migrationData.address) {
+        if (fullAddress) {
           const parts = fullAddress.split(',').map(p => p.trim());
           if (parts.length >= 3) {
             migrationData.address = parts[0]; // "990 Clement Drive"
@@ -151,36 +151,36 @@ export async function POST(req: NextRequest) {
             migrationData.zip = stateZip[1];
           }
         }
-        migrationData.google_maps_url = migrationData.google_maps_url || loc.google_maps_url;
+        migrationData.google_maps_url = loc.google_maps_url || loc.google_maps_embed_url || migrationData.google_maps_url;
       }
 
-      // Extract from get_in_touch
+      // Extract from get_in_touch (takes priority)
       if (romaData.get_in_touch) {
         // city_state like "Rossville, TN"
-        if (romaData.get_in_touch.city_state && !migrationData.city) {
+        if (romaData.get_in_touch.city_state) {
           const cityState = romaData.get_in_touch.city_state.split(',').map(p => p.trim());
-          migrationData.city = cityState[0];
-          migrationData.state = cityState[1];
+          migrationData.city = cityState[0] || migrationData.city;
+          migrationData.state = cityState[1] || migrationData.state;
         }
       }
 
-      // Extract social media
+      // Extract social media (roma_data takes priority)
       if (romaData.social_media) {
         const social = romaData.social_media;
-        migrationData.facebook_url = migrationData.facebook_url || social.facebook_url;
-        migrationData.instagram_url = migrationData.instagram_url || social.instagram_url;
-        migrationData.youtube_url = migrationData.youtube_url || social.youtube_url;
+        migrationData.facebook_url = social.facebook_url || migrationData.facebook_url;
+        migrationData.instagram_url = social.instagram_url || migrationData.instagram_url;
+        migrationData.youtube_url = social.youtube_url || migrationData.youtube_url;
         migrationData.social_handle = social.instagram_handle || social.social_handle;
       }
 
-      // Extract pricing
+      // Extract pricing (roma_data takes priority)
       if (romaData.pricing) {
-        migrationData.pricing_info = migrationData.pricing_info || romaData.pricing.pricing_information;
+        migrationData.pricing_info = romaData.pricing.pricing_information || migrationData.pricing_info;
       }
 
-      // Extract pricing_information (newer format)
+      // Extract pricing_information (newer format, takes priority)
       if (romaData.pricing_information) {
-        migrationData.pricing_info = migrationData.pricing_info || romaData.pricing_information.pricing_overview;
+        migrationData.pricing_info = romaData.pricing_information.pricing_overview || migrationData.pricing_info;
       }
     }
 
