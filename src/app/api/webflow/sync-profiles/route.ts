@@ -75,6 +75,13 @@ export async function POST(request: NextRequest) {
 
     for (const company of companies) {
       try {
+        // Fetch intake data with roma_data for this company
+        const { data: intake } = await supabase
+          .from('intakes')
+          .select('roma_data')
+          .eq('company_id', company.id)
+          .single();
+
         // Use existing webflow_slug if available, otherwise generate new one
         const baseSlug = `${company.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${company.id.substring(0, 8)}`;
         const slug = company.webflow_slug || baseSlug;
@@ -122,8 +129,8 @@ export async function POST(request: NextRequest) {
             // Images
             'profile-image': company.logo_url || company.logoUrl ? { url: company.logo_url || company.logoUrl } : undefined,
 
-            // Schema JSON for SEO/structured data
-            'schema-json': JSON.stringify({
+            // Schema JSON - includes full roma_data for rendering all sections (services, pricing, FAQs, etc.)
+            'schema-json': JSON.stringify(intake?.roma_data || {
               googleMapsUrl: company.google_maps_url || company.googleMapsUrl || '',
               yelpUrl: company.yelp_url || company.yelpUrl || '',
               address: company.address || '',
