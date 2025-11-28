@@ -169,6 +169,48 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to update intake' }, { status: 500 });
     }
 
+    // ALSO update the companies table with the migrated data (source of truth for Webflow)
+    const companyUpdate: any = {
+      name: migrationData.business_name || company.name,
+      website: migrationData.website,
+      phone: migrationData.phone,
+      email: migrationData.email,
+      address: migrationData.address,
+      city: migrationData.city,
+      state: migrationData.state,
+      zip: migrationData.zip,
+      tagline: migrationData.tagline,
+      about: migrationData.about,
+      ai_summary: migrationData.ai_summary,
+      logo_url: migrationData.logo_url,
+      facebook_url: migrationData.facebook_url,
+      instagram_url: migrationData.instagram_url,
+      youtube_url: migrationData.youtube_url,
+      google_maps_url: migrationData.google_maps_url,
+      yelp_url: migrationData.yelp_url,
+      pricing_info: migrationData.pricing_info,
+      plan: migrationData.package_type === 'verified' ? 'verified' : 'discover',
+      webflow_slug: migrationData.webflow_slug,
+      updated_at: new Date().toISOString(),
+    };
+
+    // Remove null/undefined values
+    Object.keys(companyUpdate).forEach(key => {
+      if (companyUpdate[key] === null || companyUpdate[key] === undefined) {
+        delete companyUpdate[key];
+      }
+    });
+
+    const { error: companyUpdateError } = await supabase
+      .from('companies')
+      .update(companyUpdate)
+      .eq('id', companyId);
+
+    if (companyUpdateError) {
+      console.error('Error updating company:', companyUpdateError);
+      // Don't fail the whole migration if company update fails
+    }
+
     // Extract and save images from roma_data to media_items
     let mediaCount = 0;
     const mediaErrors: string[] = [];
