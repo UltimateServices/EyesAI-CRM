@@ -120,6 +120,31 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
   console.log('Company created:', company.id);
 
+  // Initialize onboarding steps for the new company
+  const { error: initStepsError } = await supabase.rpc('initialize_onboarding_steps', {
+    p_company_id: company.id
+  });
+
+  if (initStepsError) {
+    console.error('Error initializing onboarding steps:', initStepsError);
+  } else {
+    // Mark Step 1 (Stripe Signup) as complete
+    const { error: completeStepError } = await supabase
+      .from('onboarding_steps')
+      .update({
+        completed: true,
+        completed_at: new Date().toISOString(),
+      })
+      .eq('company_id', company.id)
+      .eq('step_number', 1);
+
+    if (completeStepError) {
+      console.error('Error completing step 1:', completeStepError);
+    } else {
+      console.log('Step 1 (Stripe Signup) marked as complete');
+    }
+  }
+
   // TODO: Send notification to staff about new client
   // TODO: Trigger welcome email
 }
