@@ -45,7 +45,8 @@ type UploadCategory = 'logo' | 'photo' | 'video';
 // Internal categories (for display only on client side)
 const INTERNAL_CATEGORIES = [
   { id: 'products-services', label: 'Products / Services', color: 'bg-orange-500' },
-  { id: 'logo', label: 'Logo / Branding', color: 'bg-purple-500' },
+  { id: 'logo', label: 'Logo', color: 'bg-purple-600' },
+  { id: 'branding-marketing', label: 'Branding / Marketing', color: 'bg-purple-400' },
   { id: 'business-exterior', label: 'Business Exterior', color: 'bg-emerald-500' },
   { id: 'business-interior', label: 'Business Interior', color: 'bg-amber-500' },
   { id: 'team-people', label: 'Team / People', color: 'bg-blue-500' },

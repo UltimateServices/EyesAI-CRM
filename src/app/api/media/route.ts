@@ -149,6 +149,29 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    // If this media item is tagged as "Logo" and is active, update company logo_url
+    if (data && internal_tags?.includes('logo') && (status === 'active' || data.status === 'active')) {
+      const { error: companyError } = await supabase
+        .from('companies')
+        .update({ logo_url: data.file_url })
+        .eq('id', data.company_id);
+
+      if (companyError) {
+        console.error('Error updating company logo:', companyError);
+        // Don't fail the request if company update fails, just log it
+      }
+
+      // Also update intake table logo_url if exists
+      const { error: intakeError } = await supabase
+        .from('intakes')
+        .update({ logo_url: data.file_url })
+        .eq('company_id', data.company_id);
+
+      if (intakeError) {
+        console.error('Error updating intake logo:', intakeError);
+      }
+    }
+
     return NextResponse.json({ data });
   } catch (error) {
     console.error('Media PATCH error:', error);
