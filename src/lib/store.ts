@@ -40,6 +40,7 @@ interface StoreState {
   fetchReviews: () => Promise<void>;
   addReview: (review: any) => Promise<void>;
   addReviews: (companyId: string, reviews: Omit<Review, 'id' | 'companyId' | 'createdAt' | 'organizationId'>[]) => Promise<void>;
+  deleteReview: (id: string) => Promise<void>;
 
   // Task methods
   fetchTasks: () => Promise<void>;
@@ -665,6 +666,24 @@ export const useStore = create<StoreState>((set, get) => ({
       await get().fetchReviews();
     } catch (error) {
       console.error('Error adding reviews:', error);
+      throw error;
+    }
+  },
+
+  deleteReview: async (id) => {
+    try {
+      const { error } = await supabase
+        .from('reviews')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      set((state) => ({
+        reviews: state.reviews.filter(review => review.id !== id),
+      }));
+    } catch (error) {
+      console.error('Error deleting review:', error);
       throw error;
     }
   },

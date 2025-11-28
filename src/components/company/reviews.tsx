@@ -7,7 +7,7 @@ import { Company } from '@/lib/types';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Star, Plus, X, ExternalLink, Filter, Calendar, Download, Loader2, AlertCircle, ArrowUpDown } from 'lucide-react';
+import { Star, Plus, X, ExternalLink, Filter, Calendar, Download, Loader2, AlertCircle, ArrowUpDown, Trash2 } from 'lucide-react';
 
 interface ReviewsProps {
   company: Company;
@@ -18,6 +18,7 @@ export function Reviews({ company }: ReviewsProps) {
   const allReviews = useStore((state) => state.reviews);
   const fetchReviews = useStore((state) => state.fetchReviews);
   const addReview = useStore((state) => state.addReview);
+  const deleteReview = useStore((state) => state.deleteReview);
   const getIntakeByCompanyId = useStore((state) => state.getIntakeByCompanyId);
   const saveIntake = useStore((state) => state.saveIntake);
   const intake = getIntakeByCompanyId(company.id);
@@ -199,6 +200,19 @@ export function Reviews({ company }: ReviewsProps) {
       alert('❌ Import Failed\n\n' + error.message);
     } finally {
       setIsImporting(false);
+    }
+  };
+
+  const handleDeleteReview = async (reviewId: string, reviewAuthor: string) => {
+    if (!confirm(`Delete review by ${reviewAuthor}?\n\nThis action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await deleteReview(reviewId);
+      alert('✅ Review deleted successfully!');
+    } catch (error: any) {
+      alert(`❌ Failed to delete review: ${error.message}`);
     }
   };
 
@@ -410,11 +424,20 @@ export function Reviews({ company }: ReviewsProps) {
                     </div>
                   </div>
                 </div>
-                {review.url && (
-                  <a href={review.url} target="_blank" rel="noopener noreferrer" className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
-                )}
+                <div className="flex items-center gap-2">
+                  {review.url && (
+                    <a href={review.url} target="_blank" rel="noopener noreferrer" className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  )}
+                  <button
+                    onClick={() => handleDeleteReview(review.id, review.author || 'Anonymous')}
+                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    title="Delete review"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
               <p className="text-slate-700 leading-relaxed">{review.text}</p>
             </Card>

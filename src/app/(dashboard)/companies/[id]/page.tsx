@@ -6,7 +6,16 @@ import { useStore } from '@/lib/store';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { CompanyOverview } from '@/components/company/company-overview';
 import { IntakeForm } from '@/components/company/intake-form';
 import MediaGallery from '@/components/company/media-gallery';
@@ -25,7 +34,8 @@ import {
   Edit,
   Loader2,
   Upload,
-  ExternalLink
+  ExternalLink,
+  Database
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -46,6 +56,19 @@ export default function CompanyDetailPage() {
   const [activeTab, setActiveTab] = useState('overview');
   const [deleting, setDeleting] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [migrating, setMigrating] = useState(false);
+  const [debugging, setDebugging] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    website: '',
+    phone: '',
+    address: '',
+    city: '',
+    state: '',
+    zip: '',
+  });
 
   useEffect(() => {
     const loadData = async () => {
@@ -117,6 +140,70 @@ export default function CompanyDetailPage() {
     }
   };
 
+  const handleDebug = async () => {
+    setDebugging(true);
+    try {
+      const response = await fetch(`/api/debug-roma-data?companyId=${company.id}`);
+      const data = await response.json();
+
+      console.log('ROMA DATA STRUCTURE:', data);
+      alert('Check console for roma_data structure');
+    } catch (error: any) {
+      console.error('Debug error:', error);
+      alert(`Debug failed: ${error.message}`);
+    } finally {
+      setDebugging(false);
+    }
+  };
+
+  const handleMigrate = async () => {
+    if (!confirm(`Migrate ${company.name} data to new Webflow-aligned structure?\n\nThis will copy all company data, images, and reviews to the database.`)) {
+      return;
+    }
+
+    setMigrating(true);
+
+    try {
+      const response = await fetch('/api/migrate-company-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ companyId: company.id }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Migration failed');
+      }
+
+      console.log('Migration success:', data);
+
+      const summary = [
+        `Migrated ${data.migrated_fields.length} fields`,
+        data.media_saved > 0 ? `${data.media_saved} images saved` : null,
+        data.reviews_saved > 0 ? `${data.reviews_saved} reviews saved` : null,
+      ].filter(Boolean).join('\n');
+
+      alert(`✅ Migration complete!\n\n${summary}`);
+
+      // Refresh data
+      await Promise.all([
+        fetchIntakes(),
+        fetchCompanies(),
+      ]);
+
+      // Optionally reload page to refresh media & reviews
+      window.location.reload();
+    } catch (error: any) {
+      alert(`❌ Migration failed: ${error.message}`);
+      console.error('Migration error:', error);
+    } finally {
+      setMigrating(false);
+    }
+  };
+
   const handleSync = async () => {
     if (!confirm(`Sync ${company.name} to Webflow?\n\nThis will publish or update the profile on your Webflow site.`)) {
       return;
@@ -152,6 +239,51 @@ export default function CompanyDetailPage() {
       console.error('Sync error:', error);
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleEdit = () => {
+    // Pre-fill form with current company data
+    setEditForm({
+      name: company.name || '',
+      website: company.website || '',
+      phone: company.phone || '',
+      address: company.address || '',
+      city: company.city || '',
+      state: company.state || '',
+      zip: company.zip || '',
+    });
+    setEditModalOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    setSaving(true);
+
+    try {
+      const response = await fetch(`/api/companies/${company.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(editForm),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to update company');
+      }
+
+      alert('✅ Company updated successfully!');
+      setEditModalOpen(false);
+
+      // Refresh company data
+      await fetchCompanies();
+    } catch (error: any) {
+      alert(`❌ Failed to update: ${error.message}`);
+      console.error('Update error:', error);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -258,9 +390,48 @@ export default function CompanyDetailPage() {
               )}
             </div>
             <div className="flex gap-2 mt-2">
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" onClick={handleEdit}>
                 <Edit className="w-4 h-4 mr-2" />
                 Edit
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDebug}
+                disabled={debugging}
+                className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                title="Debug roma_data structure"
+              >
+                {debugging ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Debugging...
+                  </>
+                ) : (
+                  'Debug Data'
+                )}
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleMigrate}
+                disabled={migrating}
+                className="text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                title="Migrate company data to Webflow-aligned structure"
+              >
+                {migrating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Migrating...
+                  </>
+                ) : (
+                  <>
+                    <Database className="w-4 h-4 mr-2" />
+                    Migrate Data
+                  </>
+                )}
               </Button>
 
               <Button
@@ -371,6 +542,123 @@ export default function CompanyDetailPage() {
           <BlogBuilder company={company} />
         </TabsContent>
       </Tabs>
+
+      {/* Edit Company Modal */}
+      <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit Company Details</DialogTitle>
+            <DialogDescription>
+              Update company information. Changes will be saved to your database.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Company Name *
+                </label>
+                <Input
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  placeholder="Acme Corp"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Website
+                </label>
+                <Input
+                  value={editForm.website}
+                  onChange={(e) => setEditForm({ ...editForm, website: e.target.value })}
+                  placeholder="https://example.com"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Phone
+                </label>
+                <Input
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                  placeholder="(555) 123-4567"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Address
+                </label>
+                <Input
+                  value={editForm.address}
+                  onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                  placeholder="123 Main St"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  City
+                </label>
+                <Input
+                  value={editForm.city}
+                  onChange={(e) => setEditForm({ ...editForm, city: e.target.value })}
+                  placeholder="San Francisco"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  State
+                </label>
+                <Input
+                  value={editForm.state}
+                  onChange={(e) => setEditForm({ ...editForm, state: e.target.value })}
+                  placeholder="CA"
+                  maxLength={2}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  ZIP Code
+                </label>
+                <Input
+                  value={editForm.zip}
+                  onChange={(e) => setEditForm({ ...editForm, zip: e.target.value })}
+                  placeholder="94103"
+                />
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEditModalOpen(false)}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveEdit}
+              disabled={saving || !editForm.name}
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Changes'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

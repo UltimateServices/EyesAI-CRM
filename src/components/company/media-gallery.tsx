@@ -5,6 +5,7 @@ import { Company } from '@/lib/types';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { useStore } from '@/lib/store';
 import {
   Image as ImageIcon,
   Upload,
@@ -47,7 +48,8 @@ interface MediaItem {
 // Internal categories for worker organization (Universal for all business types)
 const INTERNAL_CATEGORIES = [
   { id: 'products-services', label: 'Products / Services', color: 'bg-orange-500', desc: 'Food, classes, treatments, finished work' },
-  { id: 'logo', label: 'Logo / Branding', color: 'bg-purple-500', desc: 'Logos, signage, uniforms, brand assets, social graphics' },
+  { id: 'logo', label: 'Logo', color: 'bg-purple-600', desc: 'Company logo files - updates across entire CRM' },
+  { id: 'branding-marketing', label: 'Branding / Marketing', color: 'bg-purple-400', desc: 'Signage, uniforms, brand assets, social graphics, marketing materials' },
   { id: 'business-exterior', label: 'Business Exterior', color: 'bg-emerald-500', desc: 'Storefront, trucks, fleet, outdoor space' },
   { id: 'business-interior', label: 'Business Interior', color: 'bg-amber-500', desc: 'Dining room, gym, office, treatment rooms' },
   { id: 'team-people', label: 'Team / People', color: 'bg-blue-500', desc: 'Employees, instructors, owners, staff' },
@@ -79,6 +81,7 @@ function Toast({ message, type, onClose }: { message: string; type: 'success' | 
 }
 
 export default function MediaGallery({ company }: MediaGalleryProps) {
+  const fetchCompanies = useStore((state) => state.fetchCompanies);
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -189,6 +192,8 @@ export default function MediaGallery({ company }: MediaGalleryProps) {
   const updateCategory = async (item: MediaItem, categoryId: string) => {
     try {
       const newTags = [categoryId];
+      const isLogoCategory = categoryId === 'logo';
+
       const response = await fetch('/api/media', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -200,9 +205,33 @@ export default function MediaGallery({ company }: MediaGalleryProps) {
       });
 
       if (response.ok) {
+        const result = await response.json();
+        console.log('Media update response:', result);
+
         setMedia(prev => prev.map(m => m.id === item.id ? { ...m, internal_tags: newTags, status: 'active' } : m));
-        showToast(`Categorized as ${INTERNAL_CATEGORIES.find(c => c.id === categoryId)?.label}`, 'success');
+
+        const categoryLabel = INTERNAL_CATEGORIES.find(c => c.id === categoryId)?.label;
+        if (isLogoCategory) {
+          showToast(`✅ Logo updated! This image will now appear across the entire CRM`, 'success');
+        } else {
+          showToast(`Categorized as ${categoryLabel}`, 'success');
+        }
+
         setSelectedItem(null);
+
+        // Refresh company data and page if it's a logo to show the updated logo in header
+        if (isLogoCategory) {
+          console.log('Fetching updated companies...');
+          await fetchCompanies();
+          setTimeout(() => {
+            console.log('Reloading page to show new logo...');
+            window.location.reload();
+          }, 1500);
+        }
+      } else {
+        const error = await response.json();
+        console.error('Failed to update media:', error);
+        showToast(`Failed to update: ${error.error || 'Unknown error'}`, 'error');
       }
     } catch (err) {
       showToast('Failed to update category', 'error');
