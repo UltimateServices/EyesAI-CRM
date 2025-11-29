@@ -111,34 +111,51 @@ export async function POST(request: NextRequest) {
       result = data;
     }
 
-    // Auto-run migration to update companies table
-    console.log('Auto-running migration for company:', companyId);
-    const migrationResponse = await fetch(
-      `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/migrate-company-data`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Cookie': request.headers.get('cookie') || '',
-        },
-        body: JSON.stringify({ companyId }),
-      }
-    );
+    // Update companies table with data from romaData
+    console.log('Updating companies table for:', companyId);
+    const companyUpdate: any = {};
 
-    if (!migrationResponse.ok) {
-      console.error('Migration failed:', await migrationResponse.text());
-      return NextResponse.json(
-        {
-          error: 'Intake saved but migration failed',
-          details: 'Data saved to intakes table but failed to update companies table',
-          intake: result
-        },
-        { status: 500 }
-      );
+    if (romaData.hero) {
+      companyUpdate.name = romaData.hero.business_name || companyUpdate.name;
+      companyUpdate.tagline = romaData.hero.tagline;
+      companyUpdate.logo_url = romaData.hero.hero_image_url || romaData.hero.logo_url;
+
+      if (romaData.hero.quick_actions) {
+        companyUpdate.phone = romaData.hero.quick_actions.call_tel?.replace('tel:', '');
+        companyUpdate.website = romaData.hero.quick_actions.website_url;
+        companyUpdate.email = romaData.hero.quick_actions.email_mailto?.replace('mailto:', '');
+        companyUpdate.google_maps_url = romaData.hero.quick_actions.maps_link;
+      }
     }
 
-    const migrationData = await migrationResponse.json();
-    console.log('Migration completed:', migrationData);
+    if (romaData.about_and_badges) {
+      companyUpdate.about = romaData.about_and_badges.about_text || romaData.about_and_badges.ai_summary_120w;
+      companyUpdate.ai_summary = romaData.about_and_badges.ai_summary_120w;
+    }
+
+    if (romaData.locations_and_hours?.primary_location) {
+      const loc = romaData.locations_and_hours.primary_location;
+      companyUpdate.address = loc.street_address;
+      companyUpdate.city = loc.city;
+      companyUpdate.state = loc.state;
+      companyUpdate.zip = loc.zip;
+    }
+
+    // Remove undefined values
+    Object.keys(companyUpdate).forEach(key => {
+      if (companyUpdate[key] === undefined) delete companyUpdate[key];
+    });
+
+    if (Object.keys(companyUpdate).length > 0) {
+      const { error: updateError } = await supabase
+        .from('companies')
+        .update(companyUpdate)
+        .eq('id', companyId);
+
+      if (updateError) {
+        console.error('Error updating company:', updateError);
+      }
+    }
 
     // Extract and save reviews from ROMA data
     let reviewsCount = 0;
@@ -150,17 +167,17 @@ export async function POST(request: NextRequest) {
         await supabase
           .from('reviews')
           .delete()
-          .eq('companyId', companyId);
+          .eq('company_id', companyId);
 
-        const reviewsToInsert = featuredReviews.map((review: any, index: number) => ({
-          companyId,
-          source: review.source || review.platform || 'google',
-          author: review.author || review.author_name || review.reviewer_name || 'Anonymous',
-          rating: review.rating || review.stars || 5,
-          text: review.text || review.review_text || review.comment || '',
+        const reviewsToInsert = featuredReviews.map((review: any) => ({
+          company_id: companyId,
+          organization_id: membership.organization_id,
+          platform: review.source || review.platform || 'Google',
+          author: review.reviewer || review.author || review.author_name || review.reviewer_name || 'Anonymous',
+          rating: review.stars || review.rating || 5,
+          text: review.excerpt || review.text || review.review_text || review.comment || '',
           date: review.date || review.review_date || review.time_description || new Date().toISOString(),
           url: review.url || review.review_url || null,
-          verified: review.verified || false,
         }));
 
         const { data: insertedReviews, error: reviewsError } = await supabase
@@ -187,13 +204,21 @@ export async function POST(request: NextRequest) {
       // Extract logo from hero section
       const logoUrl = romaData.hero?.hero_image_url || romaData.hero?.logo_url || romaData.hero?.image;
       if (logoUrl) {
+        const fileName = logoUrl.split('/').pop() || 'logo.jpg';
         mediaItems.push({
-          companyId,
-          url: logoUrl,
+          company_id: companyId,
+          organization_id: membership.organization_id,
+          file_name: fileName,
+          file_url: logoUrl,
+          file_type: 'image',
+          file_size: 0,
+          mime_type: 'image/jpeg',
           category: 'logo',
-          internal_tags: ['logo'],
-          display_order: 0,
-          organizationId: membership.organization_id,
+          internal_tags: ['Logo'],
+          uploaded_by_type: 'client',
+          uploaded_by_id: user.id,
+          priority: 100,
+          status: 'active',
         });
       }
 
@@ -203,13 +228,21 @@ export async function POST(request: NextRequest) {
         galleryImages.forEach((image: any, index: number) => {
           const imageUrl = typeof image === 'string' ? image : (image.url || image.image_url || image.src);
           if (imageUrl) {
+            const fileName = imageUrl.split('/').pop() || `image-${index}.jpg`;
             mediaItems.push({
-              companyId,
-              url: imageUrl,
+              company_id: companyId,
+              organization_id: membership.organization_id,
+              file_name: fileName,
+              file_url: imageUrl,
+              file_type: 'image',
+              file_size: 0,
+              mime_type: 'image/jpeg',
               category: 'photo',
-              alt_text: typeof image === 'object' ? (image.alt || image.caption || '') : '',
-              display_order: index + 1,
-              organizationId: membership.organization_id,
+              internal_tags: ['Business Exterior'],
+              uploaded_by_type: 'client',
+              uploaded_by_id: user.id,
+              priority: 0,
+              status: 'active',
             });
           }
         });
@@ -220,7 +253,7 @@ export async function POST(request: NextRequest) {
         await supabase
           .from('media_items')
           .delete()
-          .eq('companyId', companyId);
+          .eq('company_id', companyId);
 
         const { data: insertedMedia, error: mediaError } = await supabase
           .from('media_items')
@@ -257,7 +290,6 @@ export async function POST(request: NextRequest) {
       success: true,
       message: 'Intake data saved and migrated successfully',
       intake: result,
-      migration: migrationData,
       extracted: {
         reviews: reviewsCount,
         media: mediaCount,
