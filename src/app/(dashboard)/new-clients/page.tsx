@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { PasteIntakeModal } from '@/components/onboarding/paste-intake-modal';
+import { ReviewsModal } from '@/components/onboarding/reviews-modal';
+import { MediaModal } from '@/components/onboarding/media-modal';
 import {
   CheckCircle,
   Plus,
@@ -52,6 +54,8 @@ export default function NewClientsPage() {
   const [processingSteps, setProcessingSteps] = useState<{ [key: string]: boolean }>({});
   const [expandedCompanies, setExpandedCompanies] = useState<{ [key: string]: boolean }>({});
   const [pasteModalCompany, setPasteModalCompany] = useState<{ id: string; name: string } | null>(null);
+  const [reviewsModalCompany, setReviewsModalCompany] = useState<{ id: string; name: string } | null>(null);
+  const [mediaModalCompany, setMediaModalCompany] = useState<{ id: string; name: string } | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     website: '',
@@ -113,9 +117,9 @@ export default function NewClientsPage() {
   const mapStepsToUI = (dbSteps: any[]): OnboardingStep[] => {
     const stepConfig = [
       { id: 1, title: 'Stripe Signup', description: 'Company created from Stripe payment', icon: CheckCircle2, action: 'completed' },
-      { id: 2, title: 'AI Intake', description: 'Run Claude agent to perform intake', icon: Bot, action: 'Run Intake' },
-      { id: 3, title: 'Pull Reviews', description: 'Gemini agent pulls in reviews', icon: Star, action: 'Get Reviews' },
-      { id: 4, title: 'Upload Images', description: 'VA downloads and uploads images', icon: Upload, action: 'Upload Images' },
+      { id: 2, title: 'Paste Intake JSON', description: 'Paste ROMA JSON and verify all fields/sections are complete', icon: Bot, action: 'Paste Intake' },
+      { id: 3, title: 'Reviews', description: 'Verify 5 valid reviews are present', icon: Star, action: 'Manage Reviews' },
+      { id: 4, title: 'Logo & Media Library', description: 'Verify 1 logo and 5 gallery images are uploaded', icon: Upload, action: 'Manage Media' },
       { id: 5, title: 'Publish Profile', description: 'Make profile live on website', icon: Globe, action: 'Publish' },
       { id: 6, title: 'Screenshot Profile', description: 'Take screenshots of live profile', icon: Camera, action: 'Take Screenshots' },
       { id: 7, title: 'Video Script', description: 'Generate welcome video script', icon: FileText, action: 'Get Script' },
@@ -259,41 +263,25 @@ export default function NewClientsPage() {
   };
 
   const handlePullReviews = async (companyId: string) => {
-    // TODO: Implement Gemini review pulling - for now, manual completion
-    const confirmed = confirm('Have you pulled and added reviews for this company? Click OK to mark as complete.');
-
-    if (!confirmed) return;
-
-    const response = await fetch(`/api/onboarding/steps/${companyId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ step_number: 3, completed: true }),
-    });
-
-    if (response.ok) {
-      alert('✅ Reviews step marked as complete!');
-    } else {
-      throw new Error('Failed to update step');
+    // Find company to get its name
+    const company = companies.find(c => c.id === companyId);
+    if (!company) {
+      throw new Error('Company not found');
     }
+
+    // Open reviews modal
+    setReviewsModalCompany({ id: companyId, name: company.name });
   };
 
   const handleUploadImages = async (companyId: string) => {
-    // Manual completion for VA
-    const confirmed = confirm('Have you downloaded and uploaded all images for this company? Click OK to mark as complete.');
-
-    if (!confirmed) return;
-
-    const response = await fetch(`/api/onboarding/steps/${companyId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ step_number: 4, completed: true }),
-    });
-
-    if (response.ok) {
-      alert('✅ Image upload step marked as complete!');
-    } else {
-      throw new Error('Failed to update step');
+    // Find company to get its name
+    const company = companies.find(c => c.id === companyId);
+    if (!company) {
+      throw new Error('Company not found');
     }
+
+    // Open media modal
+    setMediaModalCompany({ id: companyId, name: company.name });
   };
 
   const handlePublishProfile = async (companyId: string) => {
@@ -652,6 +640,26 @@ export default function NewClientsPage() {
           companyName={pasteModalCompany.name}
           onClose={() => setPasteModalCompany(null)}
           onSuccess={() => refreshCompanySteps(pasteModalCompany.id)}
+        />
+      )}
+
+      {/* Reviews Modal */}
+      {reviewsModalCompany && (
+        <ReviewsModal
+          companyId={reviewsModalCompany.id}
+          companyName={reviewsModalCompany.name}
+          onClose={() => setReviewsModalCompany(null)}
+          onSuccess={() => refreshCompanySteps(reviewsModalCompany.id)}
+        />
+      )}
+
+      {/* Media Modal */}
+      {mediaModalCompany && (
+        <MediaModal
+          companyId={mediaModalCompany.id}
+          companyName={mediaModalCompany.name}
+          onClose={() => setMediaModalCompany(null)}
+          onSuccess={() => refreshCompanySteps(mediaModalCompany.id)}
         />
       )}
     </div>
