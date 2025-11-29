@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { X, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { MediaGallery } from '@/components/company/media-gallery';
+import MediaGallery from '@/components/company/media-gallery';
 import { useStore } from '@/lib/store';
 
 interface MediaModalProps {
