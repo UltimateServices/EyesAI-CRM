@@ -73,7 +73,8 @@ export function PasteIntakeModal({ companyId, companyName, onClose, onSuccess }:
         throw new Error(data.error || 'Failed to save intake data');
       }
 
-      alert('✅ Intake saved and migrated successfully! Step 2 completed.');
+      const extracted = data.extracted || { reviews: 0, media: 0 };
+      alert(`✅ Intake saved and migrated successfully! Step 2 completed.\n\nExtracted:\n• ${extracted.reviews} review${extracted.reviews !== 1 ? 's' : ''}\n• ${extracted.media} media item${extracted.media !== 1 ? 's' : ''}`);
       onSuccess();
       onClose();
     } catch (err: any) {

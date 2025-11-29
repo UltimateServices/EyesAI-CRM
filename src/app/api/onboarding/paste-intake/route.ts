@@ -140,6 +140,104 @@ export async function POST(request: NextRequest) {
     const migrationData = await migrationResponse.json();
     console.log('Migration completed:', migrationData);
 
+    // Extract and save reviews from ROMA data
+    let reviewsCount = 0;
+    try {
+      const featuredReviews = romaData.featured_reviews?.items || romaData.featured_reviews || [];
+
+      if (Array.isArray(featuredReviews) && featuredReviews.length > 0) {
+        // Delete existing reviews for this company to avoid duplicates
+        await supabase
+          .from('reviews')
+          .delete()
+          .eq('companyId', companyId);
+
+        const reviewsToInsert = featuredReviews.map((review: any, index: number) => ({
+          companyId,
+          source: review.source || review.platform || 'google',
+          author: review.author || review.author_name || review.reviewer_name || 'Anonymous',
+          rating: review.rating || review.stars || 5,
+          text: review.text || review.review_text || review.comment || '',
+          date: review.date || review.review_date || review.time_description || new Date().toISOString(),
+          url: review.url || review.review_url || null,
+          verified: review.verified || false,
+        }));
+
+        const { data: insertedReviews, error: reviewsError } = await supabase
+          .from('reviews')
+          .insert(reviewsToInsert)
+          .select();
+
+        if (reviewsError) {
+          console.error('Error saving reviews:', reviewsError);
+        } else {
+          reviewsCount = insertedReviews?.length || 0;
+          console.log(`✅ Saved ${reviewsCount} reviews to database`);
+        }
+      }
+    } catch (err) {
+      console.error('Error extracting reviews:', err);
+    }
+
+    // Extract and save media items from ROMA data
+    let mediaCount = 0;
+    try {
+      const mediaItems: any[] = [];
+
+      // Extract logo from hero section
+      const logoUrl = romaData.hero?.hero_image_url || romaData.hero?.logo_url || romaData.hero?.image;
+      if (logoUrl) {
+        mediaItems.push({
+          companyId,
+          url: logoUrl,
+          category: 'logo',
+          internal_tags: ['logo'],
+          display_order: 0,
+          organizationId: membership.organization_id,
+        });
+      }
+
+      // Extract gallery images from photo_gallery
+      const galleryImages = romaData.photo_gallery?.images || romaData.photo_gallery || [];
+      if (Array.isArray(galleryImages)) {
+        galleryImages.forEach((image: any, index: number) => {
+          const imageUrl = typeof image === 'string' ? image : (image.url || image.image_url || image.src);
+          if (imageUrl) {
+            mediaItems.push({
+              companyId,
+              url: imageUrl,
+              category: 'photo',
+              alt_text: typeof image === 'object' ? (image.alt || image.caption || '') : '',
+              display_order: index + 1,
+              organizationId: membership.organization_id,
+            });
+          }
+        });
+      }
+
+      if (mediaItems.length > 0) {
+        // Delete existing media for this company to avoid duplicates
+        await supabase
+          .from('media_items')
+          .delete()
+          .eq('companyId', companyId);
+
+        const { data: insertedMedia, error: mediaError } = await supabase
+          .from('media_items')
+          .insert(mediaItems)
+          .select();
+
+        if (mediaError) {
+          console.error('Error saving media items:', mediaError);
+        } else {
+          mediaCount = insertedMedia?.length || 0;
+          console.log(`✅ Saved ${mediaCount} media items to database`);
+        }
+      }
+    } catch (err) {
+      console.error('Error extracting media:', err);
+    }
+
     // Mark Step 2 as complete
     const { error: stepError } = await supabase
       .from('onboarding_steps')
@@ -160,6 +258,10 @@ export async function POST(request: NextRequest) {
       message: 'Intake data saved and migrated successfully',
       intake: result,
       migration: migrationData,
+      extracted: {
+        reviews: reviewsCount,
+        media: mediaCount,
+      },
     });
 
   } catch (error) {
