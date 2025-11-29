@@ -30,19 +30,21 @@ export function MediaModal({ companyId, companyName, onClose, onSuccess }: Media
         const response = await fetch(`/api/media?companyId=${companyId}`);
         if (response.ok) {
           const data = await response.json();
-          const media = data.media || [];
+          const media = data.data || [];
 
-          // Count logo items
+          // Count logo items (case-insensitive) - only active status
           const logos = media.filter((m: any) =>
-            m.category === 'logo' || m.internal_tags?.includes('logo')
+            m.status === 'active' && m.internal_tags?.some((tag: string) => tag.toLowerCase() === 'logo')
           );
           setLogoCount(logos.length);
 
-          // Count gallery/photo items (excluding logos)
-          const photos = media.filter((m: any) =>
-            m.category === 'photo' && !m.internal_tags?.includes('logo')
+          // Count gallery items (any categorized image that's NOT a logo) - only active status
+          const gallery = media.filter((m: any) =>
+            m.status === 'active' &&
+            m.internal_tags?.length > 0 &&
+            !m.internal_tags?.some((tag: string) => tag.toLowerCase() === 'logo')
           );
-          setGalleryCount(photos.length);
+          setGalleryCount(gallery.length);
         }
       } catch (err) {
         console.error('Error fetching media:', err);
