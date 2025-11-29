@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { PasteIntakeModal } from '@/components/onboarding/paste-intake-modal';
 import {
   CheckCircle,
   Plus,
@@ -50,6 +51,7 @@ export default function NewClientsPage() {
   const [companySteps, setCompanySteps] = useState<CompanySteps>({});
   const [processingSteps, setProcessingSteps] = useState<{ [key: string]: boolean }>({});
   const [expandedCompanies, setExpandedCompanies] = useState<{ [key: string]: boolean }>({});
+  const [pasteModalCompany, setPasteModalCompany] = useState<{ id: string; name: string } | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     website: '',
@@ -246,19 +248,14 @@ export default function NewClientsPage() {
 
   // Step action handlers
   const handleAIIntake = async (companyId: string) => {
-    const response = await fetch('/api/onboarding/ai-intake', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ companyId }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to run AI intake');
+    // Find company to get its name
+    const company = companies.find(c => c.id === companyId);
+    if (!company) {
+      throw new Error('Company not found');
     }
 
-    alert('✅ AI Intake completed successfully!');
+    // Open paste modal
+    setPasteModalCompany({ id: companyId, name: company.name });
   };
 
   const handlePullReviews = async (companyId: string) => {
@@ -647,6 +644,16 @@ export default function NewClientsPage() {
           </Card>
         )}
       </div>
+
+      {/* Paste Intake Modal */}
+      {pasteModalCompany && (
+        <PasteIntakeModal
+          companyId={pasteModalCompany.id}
+          companyName={pasteModalCompany.name}
+          onClose={() => setPasteModalCompany(null)}
+          onSuccess={() => refreshCompanySteps(pasteModalCompany.id)}
+        />
+      )}
     </div>
   );
 }
