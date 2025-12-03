@@ -152,15 +152,24 @@ async function sendWelcomeEmail(emailData: EmailData): Promise<boolean> {
       }),
     });
 
-    if (!profileResponse.ok) {
-      const errorText = await profileResponse.text();
-      console.error('Klaviyo profile error:', errorText);
-      throw new Error('Failed to create Klaviyo profile');
-    }
+    let profileId: string;
 
-    const profileData = await profileResponse.json();
-    const profileId = profileData.data.id;
-    console.log('✅ Klaviyo profile created/updated:', profileId);
+    if (!profileResponse.ok) {
+      const errorData = await profileResponse.json();
+
+      // Handle duplicate profile (409 error)
+      if (profileResponse.status === 409 && errorData.errors?.[0]?.code === 'duplicate_profile') {
+        profileId = errorData.errors[0].meta.duplicate_profile_id;
+        console.log('✅ Using existing Klaviyo profile:', profileId);
+      } else {
+        console.error('Klaviyo profile error:', errorData);
+        throw new Error('Failed to create Klaviyo profile');
+      }
+    } else {
+      const profileData = await profileResponse.json();
+      profileId = profileData.data.id;
+      console.log('✅ Klaviyo profile created:', profileId);
+    }
 
     // Step 2: Trigger a custom event that will send the template
     // You'll need to create a flow in Klaviyo that triggers on "Welcome Email Requested" event
