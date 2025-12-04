@@ -22,6 +22,7 @@ interface EmailData {
   clientEmail: string;
   profileUrl: string;
   videoUrl: string;
+  videoThumbnailUrl: string;
   packageType: string;
   packagePrice: string;
   loginUrl: string;
@@ -205,6 +206,7 @@ async function sendWelcomeEmail(emailData: EmailData): Promise<boolean> {
               client_email: emailData.clientEmail,
               profile_url: emailData.profileUrl,
               video_url: emailData.videoUrl,
+              video_thumbnail_url: emailData.videoThumbnailUrl,
               package_type: emailData.packageType,
               package_price: emailData.packagePrice,
               login_url: emailData.loginUrl,
