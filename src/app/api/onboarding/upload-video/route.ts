@@ -7,6 +7,9 @@ import { writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
+// Set ffmpeg path explicitly
+ffmpeg.setFfmpegPath('/usr/bin/ffmpeg');
+
 // Generate thumbnail from video
 async function generateThumbnail(videoBuffer: Buffer): Promise<Buffer> {
   return new Promise(async (resolve, reject) => {
