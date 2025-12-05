@@ -188,40 +188,39 @@ export async function POST(request: NextRequest) {
     };
 
     // Category: Map category name to Webflow category reference ID
-    // Category mapping - UPDATED with correct IDs from Webflow CMS (fetched 2025-12-05)
     const categoryMapping: Record<string, string> = {
       'Home Services': '691da4d7eda0d581b16ab22b',
       'Health & Wellness': '691da4ce0a420347e475e570',
       'Beauty & Personal Care': '691da4c6db70c97651734905',
       'Food & Beverage': '691da4c0560d2f13a303a685',
-      'Professional Services': '691da4b9ac96b94e26832356',
-      'Automotive Services': '691da4b28b9caeede0633b11',
-      'Retail & Shopping': '691da4aa6cd47109b1f144cb',
-      'Real Estate & Housing': '691da4a2156537b952177753',
-      'Marketing & Creative': '691da49ac95408144843ea6a',
-      'Events & Entertainment': '691da4919904109b50bc027b',
-      'Construction & Trades': '691da487eade11d49644bf77',
-      'Education & Training': '691da47f8d35f76dbc35263e',
-      'Pets & Animals': '691da476c52d7a40b4a60427',
-      'Medical & Dental': '691da46b20394b39b05ab69e',
-      'Finance & Insurance': '691da45f3dc2d19f2b664c9d',
-      'Technology & IT': '691da457a67cb3a4d415b6f6',
-      'Logistics & Transportation': '691da44ffcf13fd797f20a15',
-      'Manufacturing & Industrial': '691da42375d41d092a9cbc3b',
-      'Cleaning & Sanitation': '691da4190b1a8245261e55bf',
-      'Travel & Hospitality': '691da40e438c43a9acc8c71e',
-      'Fitness & Sports': '691da406e94c1eee6e3c0e39',
-      'Arts, Media & Publishing': '691da3fd773731d9153fd97d',
-      'Nonprofit & Community': '691da3f74a7fc05196189811',
-      'Other Services': '691da3e7c95408144843a63f'
+      'Professional Services': '691da4bc29c3f5c98d2adcc6',
+      'Automotive Services': '691da4b7056c7be48e03ebd6',
+      'Retail & Shopping': '691da4b28e9e64e0ba1f4f00',
+      'Real Estate & Housing': '691da4ab4d3f7b8e22f28f41',
+      'Marketing & Creative': '691da4a5b72aefe8cefb00c5',
+      'Events & Entertainment': '691da49e04e949f0d2d7863a',
+      'Construction & Trades': '691da497c32ea3e47cd5d9ac',
+      'Education & Training': '691da490ce99ea3a1ba03b6e',
+      'Pets & Animals': '691da48a85e789d8c97df866',
+      'Medical & Dental': '691da483eac72e53d40dfc85',
+      'Finance & Insurance': '691da47d37873f3f2a8f90b0',
+      'Technology & IT': '691da4771df75aca52c79fc6',
+      'Logistics & Transportation': '691da4713b86e5a8f6c9d6bb',
+      'Manufacturing & Industrial': '691da46b060d2f13a303958e',
+      'Cleaning & Sanitation': '691da465c32ea3e47cd5c6b6',
+      'Travel & Hospitality': '691da45e9c5e2330f6d18cf4',
+      'Fitness & Sports': '691da458e6adeb59d2e42fc5',
+      'Arts, Media & Publishing': '691da452dc4cac851e37ae78',
+      'Nonprofit & Community': '691da44b1df75aca52c78bb0',
+      'Other Services': '691da443e6adeb59d2e42802'
     };
 
     const categoryName = hero.category;
     if (categoryName && categoryMapping[categoryName]) {
       webflowProfile.fieldData['category'] = categoryMapping[categoryName];
-      console.log(`✅ Mapped category "${categoryName}" to Webflow ID: ${categoryMapping[categoryName]}`);
+      console.log(`DEBUG: Mapped category "${categoryName}" to Webflow ID: ${categoryMapping[categoryName]}`);
     } else if (categoryName) {
-      console.warn(`⚠️  Category "${categoryName}" not found in mapping. Available categories: ${Object.keys(categoryMapping).join(', ')}`);
+      console.warn(`WARNING: Category "${categoryName}" not found in mapping. Available categories: ${Object.keys(categoryMapping).join(', ')}`);
     }
 
     // FIX #2: Get logo from media_items table (not roma_data)
@@ -350,9 +349,8 @@ export async function POST(request: NextRequest) {
 
     if (!profileResponse.ok) {
       const errorText = await profileResponse.text();
-      console.error(`❌ Webflow profile sync failed (${profileResponse.status}):`, errorText);
       return NextResponse.json(
-        { error: 'Failed to sync profile to Webflow', details: `HTTP ${profileResponse.status}: ${errorText}` },
+        { error: 'Failed to sync profile to Webflow', details: errorText },
         { status: 500 }
       );
     }

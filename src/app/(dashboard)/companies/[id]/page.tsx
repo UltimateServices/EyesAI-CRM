@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { CompanyOverview } from '@/components/company/company-overview';
+import { IntakeForm } from '@/components/company/intake-form';
 import MediaGallery from '@/components/company/media-gallery';
 import { Reviews } from '@/components/company/reviews';
 import { DeliverablesList } from '@/components/deliverables/DeliverablesList';
@@ -44,7 +45,9 @@ export default function CompanyDetailPage() {
   const companyId = params.id as string;
 
   const companies = useStore((state) => state.companies);
+  const intakes = useStore((state) => state.intakes);
   const fetchCompanies = useStore((state) => state.fetchCompanies);
+  const fetchIntakes = useStore((state) => state.fetchIntakes);
   const deleteCompany = useStore((state) => state.deleteCompany);
   const currentUserRole = useStore((state) => state.currentUserRole);
   const initializeOrganization = useStore((state) => state.initializeOrganization);
@@ -79,14 +82,18 @@ export default function CompanyDetailPage() {
     const loadData = async () => {
       setLoading(true);
       await initializeOrganization();
-      await fetchCompanies();
+      await Promise.all([
+        fetchCompanies(),
+        fetchIntakes(),
+      ]);
       setLoading(false);
     };
-
+    
     loadData();
-  }, [initializeOrganization, fetchCompanies]);
+  }, [initializeOrganization, fetchCompanies, fetchIntakes]);
 
   const company = companies.find((c) => c.id === companyId);
+  const intake = intakes.find((i) => i.companyId === companyId);
 
   if (loading) {
     return (
@@ -190,7 +197,10 @@ export default function CompanyDetailPage() {
       alert(`✅ Migration complete!\n\n${summary}`);
 
       // Refresh data
-      await fetchCompanies();
+      await Promise.all([
+        fetchIntakes(),
+        fetchCompanies(),
+      ]);
 
       // Optionally reload page to refresh media & reviews
       window.location.reload();
@@ -499,24 +509,29 @@ export default function CompanyDetailPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="gap-4">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="intake">Intake</TabsTrigger>
           <TabsTrigger value="media">Media</TabsTrigger>
           <TabsTrigger value="reviews">Reviews</TabsTrigger>
-          <TabsTrigger
-            value="deliverables"
+          <TabsTrigger 
+            value="deliverables" 
             className="bg-blue-50 data-[state=active]:bg-blue-600 data-[state=active]:text-white hover:bg-blue-100"
           >
             Monthly Deliverables
           </TabsTrigger>
-          <TabsTrigger
-            value="blog-builder"
+          <TabsTrigger 
+            value="blog-builder" 
             className="bg-purple-50 data-[state=active]:bg-purple-600 data-[state=active]:text-white hover:bg-purple-100"
           >
-            Blog
+            Blog Builder
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-6">
           <CompanyOverview company={company} />
+        </TabsContent>
+
+        <TabsContent value="intake" className="mt-6">
+          <IntakeForm company={company} />
         </TabsContent>
 
         <TabsContent value="media" className="mt-6">
