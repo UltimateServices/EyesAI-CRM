@@ -677,7 +677,7 @@ export default function NewClientsPage() {
                             <p className="text-xs text-slate-600 mb-3">
                               {step.description}
                             </p>
-                            {(!step.completed || step.id === 1 || step.id === 5 || step.id === 2 || step.id === 6 || step.id === 7 || step.id === 8) && step.action !== 'completed' && (
+                            {(!step.completed || step.id === 1 || step.id === 2 || step.id === 3 || step.id === 4 || step.id === 5 || step.id === 6 || step.id === 7 || step.id === 8) && step.action !== 'completed' && (
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -701,13 +701,17 @@ export default function NewClientsPage() {
                                     <Eye className="w-3 h-3 mr-1" />
                                     View Details
                                   </>
-                                ) : step.completed && step.id === 5 ? (
-                                  'Re-publish'
                                 ) : step.completed && step.id === 2 ? (
                                   <>
                                     <Eye className="w-3 h-3 mr-1" />
                                     View JSON
                                   </>
+                                ) : step.completed && step.id === 3 ? (
+                                  'Manage Reviews'
+                                ) : step.completed && step.id === 4 ? (
+                                  'Manage Media'
+                                ) : step.completed && step.id === 5 ? (
+                                  'Re-publish'
                                 ) : step.completed && step.id === 6 ? (
                                   'Manage Screenshots'
                                 ) : step.completed && step.id === 7 ? (

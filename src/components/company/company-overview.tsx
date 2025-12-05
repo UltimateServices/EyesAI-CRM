@@ -1,20 +1,19 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { Company } from '@/lib/types';
-import { useStore } from '@/lib/store';
 import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { 
-  Phone, 
-  Globe, 
-  Mail, 
-  MapPin,
-  Clock,
-  Star,
-  ExternalLink,
-  Calendar,
-  CheckCircle2
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Loader2,
+  Save,
+  RefreshCw,
+  AlertCircle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 interface CompanyOverviewProps {
@@ -22,859 +21,542 @@ interface CompanyOverviewProps {
 }
 
 export function CompanyOverview({ company }: CompanyOverviewProps) {
-  const getIntakeByCompanyId = useStore((state) => state.getIntakeByCompanyId);
-  const intake = getIntakeByCompanyId(company.id);
-  
-  if (!intake?.romaData) {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [romaData, setRomaData] = useState<any>(null);
+  const [schemaExpanded, setSchemaExpanded] = useState(false);
+
+  useEffect(() => {
+    fetchIntakeData();
+  }, [company.id]);
+
+  const fetchIntakeData = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const response = await fetch(`/api/intakes?companyId=${company.id}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch intake data');
+      }
+      const data = await response.json();
+
+      if (data.intake?.roma_data) {
+        const parsed = typeof data.intake.roma_data === 'string'
+          ? JSON.parse(data.intake.roma_data)
+          : data.intake.roma_data;
+        console.log('🔍 Loaded ROMA data:', parsed);
+        setRomaData(parsed);
+      } else {
+        setError('No intake data available yet');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to load company data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const response = await fetch(`/api/intakes`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          companyId: company.id,
+          romaData: romaData
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save changes');
+      }
+
+      setSuccess('✅ Changes saved successfully!');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err: any) {
+      setError(err.message || 'Failed to save changes');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSyncToWebflow = async () => {
+    setSyncing(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const response = await fetch('/api/webflow/publish-company', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          companyId: company.id
+        })
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to sync to Webflow');
+      }
+
+      setSuccess('✅ Successfully synced to Webflow!');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err: any) {
+      setError(err.message || 'Failed to sync to Webflow');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const updateField = (path: string, value: any) => {
+    setRomaData((prev: any) => {
+      const keys = path.split('.');
+      const newData = { ...prev };
+      let current = newData;
+
+      for (let i = 0; i < keys.length - 1; i++) {
+        if (!current[keys[i]]) current[keys[i]] = {};
+        current[keys[i]] = { ...current[keys[i]] };
+        current = current[keys[i]];
+      }
+
+      current[keys[keys.length - 1]] = value;
+      return newData;
+    });
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      </div>
+    );
+  }
+
+  if (!romaData) {
     return (
       <Card className="p-8">
         <div className="text-center">
+          <AlertCircle className="w-12 h-12 text-slate-300 mx-auto mb-4" />
           <p className="text-slate-600 mb-4">No intake data available yet.</p>
-          <p className="text-sm text-slate-500">Go to the Intake tab to import ROMA-PDF data.</p>
+          <p className="text-sm text-slate-500">Complete Step 2 in onboarding to import intake data.</p>
         </div>
       </Card>
     );
   }
 
-  const data = intake.romaData;
-
-  // Safe getter functions
-  const safeGet = (obj: any, path: string, fallback: any = '') => {
-    try {
-      return path.split('.').reduce((acc, part) => acc?.[part], obj) ?? fallback;
-    } catch {
-      return fallback;
-    }
-  };
-
-  const safeArray = (value: any): any[] => {
-    if (Array.isArray(value)) return value;
-    if (value && typeof value === 'object') return Object.values(value);
-    return [];
-  };
-
-  const safeString = (value: any): string => {
-    if (typeof value === 'string') return value;
-    if (value === null || value === undefined) return '';
-    if (typeof value === 'object') return JSON.stringify(value);
-    return String(value);
-  };
-
-  // Helper: Render badge (handles BOTH string and object formats)
-  const renderBadge = (badge: any): string => {
-    // If it's already a string, return it
-    if (typeof badge === 'string') {
-      return badge;
-    }
-    
-    // If it's an object with icon and text properties
-    if (badge && typeof badge === 'object') {
-      const icon = badge.icon || '';
-      const text = badge.text || '';
-      
-      // Combine icon and text with a space
-      if (icon && text) {
-        return `${icon} ${text}`;
-      }
-      
-      // Return whichever exists
-      if (text) return text;
-      if (icon) return icon;
-      
-      // Fallback to stringifying the object
-      return safeString(badge);
-    }
-    
-    // Last resort fallback
-    return safeString(badge);
-  };
-
-  // Helper: Get location address lines (handles ALL formats)
-  const getLocationAddress = (): string[] => {
-    const locHours = data.locations_and_hours;
-    if (!locHours) {
-      console.log('❌ No locations_and_hours data');
-      return [];
-    }
-    
-    console.log('📍 Location data:', locHours);
-    
-    const primaryLoc = locHours.primary_location;
-    
-    // Helper to check if a value is actually a real address component (not "<>" or empty)
-    const isRealValue = (val: any): boolean => {
-      if (!val) return false;
-      if (val === '<>') return false;
-      if (typeof val === 'string' && val.trim() === '') return false;
-      return true;
-    };
-    
-    // Check ALL possible full address fields first
-    const fullAddressFields = [
-      primaryLoc?.full_address,
-      locHours.full_address,
-      locHours.primary_address,
-      locHours.address,
-      primaryLoc?.address
-    ];
-    
-    console.log('🔍 Checking full address fields:', fullAddressFields);
-    
-    for (const addr of fullAddressFields) {
-      if (isRealValue(addr)) {
-        console.log('✅ Found full address:', addr);
-        return [addr];
-      }
-    }
-    
-    // If no full address, try to build from parts
-    const addressLines: string[] = [];
-    
-    // Check ALL possible street address fields
-    const street1 = primaryLoc?.address_line_1 || primaryLoc?.address_line1 || 
-                    locHours.address_line_1 || locHours.address_line1 ||
-                    primaryLoc?.street || locHours.street;
-    const street2 = primaryLoc?.address_line_2 || primaryLoc?.address_line2 ||
-                    locHours.address_line_2 || locHours.address_line2;
-    
-    if (isRealValue(street1)) addressLines.push(street1);
-    if (isRealValue(street2)) addressLines.push(street2);
-    
-    // Check ALL possible city/state/zip fields
-    const city = primaryLoc?.city || locHours.city || primaryLoc?.addressLocality || locHours.addressLocality;
-    const state = primaryLoc?.state || locHours.state || primaryLoc?.addressRegion || locHours.addressRegion;
-    const zip = primaryLoc?.zip || locHours.zip || primaryLoc?.postalCode || locHours.postalCode;
-    
-    console.log('🏙️ City/State/Zip:', { city, state, zip });
-    
-    // Build city/state/zip line if we have city and state
-    if (city && state) {
-      const cityParts = [city, state, zip].filter(isRealValue);
-      addressLines.push(cityParts.join(', '));
-    }
-    
-    // Return if we have anything
-    if (addressLines.length > 0) {
-      console.log('✅ Built address lines:', addressLines);
-      return addressLines;
-    }
-    
-    // Check for city_state combined field
-    if (isRealValue(locHours.city_state)) {
-      console.log('✅ Found city_state:', locHours.city_state);
-      return [locHours.city_state];
-    }
-    
-    console.log('❌ No valid location found');
-    // Nothing found - return empty
-    return [];
-  };
-
-  // Helper: Get table data (handles BOTH formats explicitly)
-  const getTableData = (): { title: string; description: string | null; headers: any[]; rows: any[] } | null => {
-    const guide = data.quick_reference_guide;
-    
-    // No guide section at all
-    if (!guide) {
-      return null;
-    }
-    
-    let headers: any[] = [];
-    let rows: any[] = [];
-    
-    // Try Format 1: table.headers + table.rows (Car Shipping)
-    if (guide.table) {
-      if (guide.table.headers) {
-        headers = safeArray(guide.table.headers);
-      }
-      if (guide.table.rows) {
-        rows = safeArray(guide.table.rows);
-      }
-    }
-    
-    // Try Format 2: Direct columns + rows (Major Dumpsters)
-    if (headers.length === 0 && guide.columns) {
-      headers = safeArray(guide.columns);
-    }
-    if (rows.length === 0 && guide.rows) {
-      rows = safeArray(guide.rows);
-    }
-    
-    // If we still don't have data, return null
-    if (headers.length === 0 || rows.length === 0) {
-      return null;
-    }
-    
-    // Build title and description
-    const title = guide.title || guide.description || guide.table_title || 'Quick Reference Guide';
-    const description = (guide.description && guide.description !== guide.title) ? guide.description : null;
-    
-    return {
-      title,
-      description,
-      headers,
-      rows
-    };
-  };
-
-  // Helper: Clean and format hours string
-  const formatHoursString = (hoursStr: string): JSX.Element => {
-    // Detect if hours contain multiple segments (Office, Shipping, etc.)
-    const hasMultipleSegments = hoursStr.includes('Office:') || 
-                                 hoursStr.includes('Shipping:') || 
-                                 hoursStr.includes('|');
-    
-    if (hasMultipleSegments) {
-      // Split by pipe and clean up each segment
-      const segments = hoursStr.split('|').map(s => s.trim());
-      
-      return (
-        <div className="text-right">
-          {segments.map((segment, idx) => (
-            <div key={idx} className="text-slate-600 text-xs leading-relaxed">
-              {segment}
-            </div>
-          ))}
-        </div>
-      );
-    }
-    
-    // Simple hours string
-    return <span className="text-slate-600">{hoursStr}</span>;
-  };
-
-  // Helper: Render hours (handles BOTH object and array formats)
-  const renderHours = () => {
-    const hours = data.locations_and_hours?.opening_hours;
-    
-    if (!hours) {
-      return null;
-    }
-    
-    // Format 1: Array of {day, hours} objects (ZoRoCo)
-    if (Array.isArray(hours)) {
-      if (hours.length === 0) return null;
-      
-      return (
-        <>
-          {hours.map((item: any, idx: number) => (
-            <div key={idx} className="flex justify-between items-start text-sm gap-4">
-              <span className="font-medium text-slate-700">{item.day}</span>
-              {formatHoursString(safeString(item.hours))}
-            </div>
-          ))}
-        </>
-      );
-    }
-    
-    // Format 2: Object with day keys - SORT BY DAY ORDER
-    if (typeof hours === 'object' && hours !== null) {
-      const entries = Object.entries(hours);
-      
-      if (entries.length === 0) return null;
-      
-      // Sort days in proper order
-      const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-      const sortedEntries = entries.sort((a, b) => {
-        const dayA = a[0].toLowerCase();
-        const dayB = b[0].toLowerCase();
-        return dayOrder.indexOf(dayA) - dayOrder.indexOf(dayB);
-      });
-      
-      return (
-        <>
-          {sortedEntries.map(([day, hoursStr]: [string, any]) => (
-            <div key={day} className="flex justify-between items-start text-sm gap-4">
-              <span className="font-medium capitalize text-slate-700">{day}</span>
-              {formatHoursString(safeString(hoursStr))}
-            </div>
-          ))}
-        </>
-      );
-    }
-    
-    return null;
-  };
-
-  // Pre-compute values
-  const tableData = getTableData();
-  const locationLines = getLocationAddress();
-  const hoursContent = renderHours();
-
   return (
     <div className="space-y-6">
-      {/* AI Overview */}
-      {data.ai_overview?.overview_line && (
-        <Card className="p-6 bg-blue-50 border-blue-200">
-          <div className="flex items-start gap-3">
-            <span className="text-2xl">🤖</span>
-            <div>
-              <h3 className="font-semibold text-slate-900 mb-1">AI Summary</h3>
-              <p className="text-slate-700">{data.ai_overview.overview_line}</p>
-            </div>
+      {/* Header with Save & Sync Buttons */}
+      <div className="flex items-center justify-between sticky top-0 bg-white z-10 py-4 border-b">
+        <h2 className="text-2xl font-bold text-slate-900">Company Overview</h2>
+        <div className="flex gap-3">
+          <Button
+            onClick={handleSave}
+            disabled={saving}
+            variant="default"
+          >
+            {saving ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4 mr-2" />
+                Save Changes
+              </>
+            )}
+          </Button>
+          <Button
+            onClick={handleSyncToWebflow}
+            disabled={syncing}
+            variant="outline"
+          >
+            {syncing ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Syncing...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Sync to Webflow
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {/* Success/Error Messages */}
+      {success && (
+        <Card className="p-4 bg-green-50 border-green-200">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5 text-green-600" />
+            <p className="text-green-800 font-medium">{success}</p>
           </div>
         </Card>
       )}
 
-      {/* Hero Section */}
-      {data.hero && (
-        <Card className="p-6">
-          <div className="flex items-start justify-between mb-6">
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900 mb-2">
-                {safeGet(data, 'hero.business_name') || safeGet(data, 'hero.company_name') || company.name}
-              </h1>
-              {data.hero.tagline && (
-                <p className="text-lg text-slate-600">{data.hero.tagline}</p>
-              )}
-            </div>
-          </div>
-
-          {/* Badges - FIXED to handle both formats */}
-          {safeArray(data.hero.badges).length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-6">
-              {safeArray(data.hero.badges).map((badge: any, idx: number) => (
-                <Badge key={idx} variant="secondary">
-                  <CheckCircle2 className="w-3 h-3 mr-1" />
-                  {renderBadge(badge)}
-                </Badge>
-              ))}
-            </div>
-          )}
-
-          {/* Quick Actions - Handles both OBJECT and ARRAY formats */}
-          {data.hero.quick_actions && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-              {Array.isArray(data.hero.quick_actions) ? (
-                // Array format (Captain Mike's, ZoRoCo)
-                data.hero.quick_actions.map((action: any, idx: number) => {
-                  const href = action.value || action.call_tel || action.website_url || action.email_mailto || action.maps_link;
-                  const isExternal = href?.includes('http') || href?.includes('maps.google');
-                  const icon = action.icon || action.action_type;
-                  
-                  return (
-                    <Button key={idx} asChild variant="outline" className="w-full">
-                      <a href={href} target={isExternal ? "_blank" : undefined} rel={isExternal ? "noopener noreferrer" : undefined}>
-                        {icon?.includes('phone') || action.label?.toLowerCase().includes('call') ? <Phone className="w-4 h-4 mr-2" /> :
-                         icon?.includes('globe') || action.label?.toLowerCase().includes('website') ? <Globe className="w-4 h-4 mr-2" /> :
-                         icon?.includes('mail') || action.label?.toLowerCase().includes('email') ? <Mail className="w-4 h-4 mr-2" /> :
-                         icon?.includes('map') || action.label?.toLowerCase().includes('direction') ? <MapPin className="w-4 h-4 mr-2" /> : null}
-                        {action.label || 'Contact'}
-                      </a>
-                    </Button>
-                  );
-                })
-              ) : (
-                // Object format (Major, Car Shipping)
-                <>
-                  {safeGet(data, 'hero.quick_actions.call_tel') && (
-                    <Button asChild variant="outline" className="w-full">
-                      <a href={safeGet(data, 'hero.quick_actions.call_tel')}>
-                        <Phone className="w-4 h-4 mr-2" />
-                        Call Now
-                      </a>
-                    </Button>
-                  )}
-                  {safeGet(data, 'hero.quick_actions.website_url') && (
-                    <Button asChild variant="outline" className="w-full">
-                      <a href={safeGet(data, 'hero.quick_actions.website_url')} target="_blank" rel="noopener noreferrer">
-                        <Globe className="w-4 h-4 mr-2" />
-                        Visit Website
-                      </a>
-                    </Button>
-                  )}
-                  {safeGet(data, 'hero.quick_actions.email_mailto') && (
-                    <Button asChild variant="outline" className="w-full">
-                      <a href={safeGet(data, 'hero.quick_actions.email_mailto')}>
-                        <Mail className="w-4 h-4 mr-2" />
-                        Email
-                      </a>
-                    </Button>
-                  )}
-                  {safeGet(data, 'hero.quick_actions.maps_link') && (
-                    <Button asChild variant="outline" className="w-full">
-                      <a href={safeGet(data, 'hero.quick_actions.maps_link')} target="_blank" rel="noopener noreferrer">
-                        <MapPin className="w-4 h-4 mr-2" />
-                        Directions
-                      </a>
-                    </Button>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-        </Card>
-      )}
-
-      {/* About & Badges */}
-      {data.about_and_badges && (
-        <Card className="p-6">
-          <h2 className="text-xl font-bold text-slate-900 mb-4">
-            About {safeGet(data, 'hero.business_name') || safeGet(data, 'hero.company_name') || company.name}
-          </h2>
-          {data.about_and_badges.ai_summary_120w && (
-            <p className="text-slate-700 leading-relaxed mb-4">
-              {data.about_and_badges.ai_summary_120w}
-            </p>
-          )}
-          {safeArray(data.about_and_badges.company_badges).length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {safeArray(data.about_and_badges.company_badges).map((badge: any, idx: number) => (
-                <Badge key={idx} variant="outline">
-                  {renderBadge(badge)}
-                </Badge>
-              ))}
-            </div>
-          )}
-        </Card>
-      )}
-
-      {/* Services */}
-      {safeArray(data.services).length > 0 && (
-        <Card className="p-6">
-          <h2 className="text-xl font-bold text-slate-900 mb-6">
-            {data.services_section_title || 'Our Services'}
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {safeArray(data.services).map((service: any, idx: number) => (
-              <Card key={idx} className="p-4 border-2">
-                <div className="flex items-start gap-3 mb-3">
-                  {service.emoji && <span className="text-2xl">{service.emoji}</span>}
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-slate-900">{service.title || 'Service'}</h3>
-                    {service.pricing_label && (
-                      <p className="text-sm font-medium text-green-600">{service.pricing_label}</p>
-                    )}
-                  </div>
-                </div>
-                {service.summary_1line && (
-                  <p className="text-sm text-slate-600 mb-3">{service.summary_1line}</p>
-                )}
-                {safeArray(service.whats_included).length > 0 && (
-                  <div className="space-y-1">
-                    <p className="text-xs font-medium text-slate-500 uppercase">What's Included:</p>
-                    <ul className="text-sm text-slate-700 space-y-1">
-                      {safeArray(service.whats_included).map((item: any, i: number) => (
-                        <li key={i} className="flex items-start gap-2">
-                          <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                          <span>{safeString(item)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {service.duration && (
-                  <p className="text-xs text-slate-500 mt-3">
-                    <Clock className="w-3 h-3 inline mr-1" />
-                    {service.duration}
-                  </p>
-                )}
-              </Card>
-            ))}
+      {error && (
+        <Card className="p-4 bg-red-50 border-red-200">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-red-600" />
+            <p className="text-red-800 font-medium">{error}</p>
           </div>
         </Card>
       )}
 
-      {/* Quick Reference Guide - FIXED with explicit conditional */}
-      {tableData && (
-        <Card className="p-6">
-          <h2 className="text-xl font-bold text-slate-900 mb-4">{tableData.title}</h2>
-          {tableData.description && (
-            <p className="text-slate-600 mb-4">{tableData.description}</p>
-          )}
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="bg-slate-100">
-                  {tableData.headers.map((col: any, idx: number) => (
-                    <th key={idx} className="border border-slate-300 px-4 py-2 text-left text-sm font-semibold">
-                      {safeString(col)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {tableData.rows.map((row: any, rowIdx: number) => (
-                  <tr key={rowIdx} className="hover:bg-slate-50">
-                    {safeArray(row).map((cell: any, cellIdx: number) => (
-                      <td key={cellIdx} className="border border-slate-300 px-4 py-2 text-sm">
-                        {safeString(cell)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* Step 1: Basic Company Info (from Stripe) */}
+      <Card className="p-6 bg-blue-50 border-blue-200">
+        <h3 className="text-lg font-semibold text-slate-900 mb-4">📋 Step 1: Basic Info (from Stripe Checkout)</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="col-span-2">
+            <label className="block text-sm font-medium text-slate-700 mb-2">Company Name (from Step 1)</label>
+            <Input value={company.name || ''} disabled className="bg-slate-100" />
           </div>
-        </Card>
-      )}
-
-      {/* Pricing Information */}
-      {data.pricing_information && (
-        <Card className="p-6 bg-green-50 border-green-200">
-          <h2 className="text-xl font-bold text-slate-900 mb-3">💰 Pricing Information</h2>
-          {data.pricing_information.summary_line && (
-            <p className="text-slate-700 mb-4">{data.pricing_information.summary_line}</p>
-          )}
-          {safeArray(data.pricing_information.pricing_notes).length > 0 && (
-            <ul className="text-sm text-slate-700 space-y-1 mb-4">
-              {safeArray(data.pricing_information.pricing_notes).map((note: any, idx: number) => (
-                <li key={idx} className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  <span>{safeString(note)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          {safeArray(data.pricing_information.cta_buttons).length > 0 && (
-            <div className="flex flex-wrap gap-3">
-              {safeArray(data.pricing_information.cta_buttons).map((button: any, idx: number) => (
-                <Button key={idx} variant="default" size="sm">
-                  {safeString(button)}
-                </Button>
-              ))}
-            </div>
-          )}
-        </Card>
-      )}
-
-      {/* What to Expect */}
-      {safeArray(data.what_to_expect).length > 0 && (
-        <Card className="p-6">
-          <h2 className="text-xl font-bold text-slate-900 mb-6">What to Expect: Common Scenarios</h2>
-          <div className="space-y-6">
-            {safeArray(data.what_to_expect).map((card: any, idx: number) => (
-              <Card key={idx} className="p-4 border-2">
-                <div className="flex items-start gap-3 mb-3">
-                  {card.emoji && <span className="text-2xl">{card.emoji}</span>}
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-slate-900">{card.title || 'Scenario'}</h3>
-                    {card.recommended_for && (
-                      <p className="text-sm text-slate-600 mt-1">
-                        <strong>Recommended:</strong> {card.recommended_for}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                {safeArray(card.whats_involved).length > 0 && (
-                  <div className="mb-3">
-                    <p className="text-xs font-medium text-slate-500 uppercase mb-2">What's Involved:</p>
-                    <ul className="text-sm text-slate-700 space-y-1">
-                      {safeArray(card.whats_involved).map((item: any, i: number) => (
-                        <li key={i} className="flex items-start gap-2">
-                          <CheckCircle2 className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                          <span>{safeString(item)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {card.pro_tip && (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded p-3">
-                    <p className="text-sm text-slate-700">
-                      <span className="font-semibold">💡 Pro Tip:</span> {card.pro_tip}
-                    </p>
-                  </div>
-                )}
-              </Card>
-            ))}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Email (from Step 1)</label>
+            <Input value={company.email || ''} disabled className="bg-slate-100" />
           </div>
-        </Card>
-      )}
-
-      {/* Location & Hours - FIXED */}
-      {data.locations_and_hours && (
-        <Card className="p-6">
-          <h2 className="text-xl font-bold text-slate-900 mb-6">Location(s)</h2>
-          
-          {/* Primary Location */}
-          {locationLines.length > 0 && (
-            <div className="mb-6">
-              <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
-                <MapPin className="w-5 h-5 text-blue-600" />
-                Primary Location
-              </h3>
-              <div className="space-y-2 ml-7">
-                {locationLines.map((line, idx) => (
-                  <p key={idx} className="text-slate-700">{line}</p>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Multiple Locations Array */}
-          {safeArray(data.locations_and_hours.locations).length > 0 && (
-            <div className="space-y-6 mb-6">
-              {safeArray(data.locations_and_hours.locations).map((location: any, idx: number) => (
-                <div key={idx} className={`${idx < safeArray(data.locations_and_hours.locations).length - 1 ? 'pb-6 border-b' : ''}`}>
-                  <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
-                    <MapPin className="w-5 h-5 text-blue-600" />
-                    {location.name || `Location ${idx + 1}`}
-                  </h3>
-                  <div className="space-y-2 ml-7">
-                    {location.address_line1 && (
-                      <p className="text-slate-700">{location.address_line1}</p>
-                    )}
-                    {location.city_state_zip && (
-                      <p className="text-slate-700">{location.city_state_zip}</p>
-                    )}
-                    {location.phone && (
-                      <p className="text-slate-700">
-                        <Phone className="w-4 h-4 inline mr-2" />
-                        {location.phone}
-                      </p>
-                    )}
-                    {location.google_maps_embed_url && 
-                     location.google_maps_embed_url !== '<>' && (
-                      <Button asChild variant="outline" size="sm" className="mt-2">
-                        <a href={location.google_maps_embed_url} target="_blank" rel="noopener noreferrer">
-                          <MapPin className="w-4 h-4 mr-2" />
-                          Get Directions →
-                        </a>
-                      </Button>
-                    )}
-                    
-                    {/* Location-specific hours if available */}
-                    {location.hours && Object.keys(location.hours).length > 0 && (
-                      <div className="mt-3 pt-3 border-t">
-                        <p className="text-sm font-medium text-slate-700 mb-2">Hours:</p>
-                        <div className="grid grid-cols-2 gap-2">
-                          {Object.entries(location.hours).map(([day, hours]: [string, any]) => (
-                            <div key={day} className="flex justify-between text-sm">
-                              <span className="font-medium capitalize text-slate-700">{day}</span>
-                              <span className="text-slate-600">{safeString(hours)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Service Area */}
-          {data.locations_and_hours.service_area_text && (
-            <div className="mb-6">
-              <h3 className="font-semibold text-slate-900 mb-2">Service Area</h3>
-              <p className="text-slate-700">{data.locations_and_hours.service_area_text}</p>
-            </div>
-          )}
-
-          {/* General Hours */}
-          {hoursContent && (
-            <div>
-              <h3 className="font-semibold text-slate-900 mb-3">Hours of Operation</h3>
-              <div className="space-y-2">
-                {hoursContent}
-              </div>
-              {data.locations_and_hours.hours_note && (
-                <p className="text-sm text-slate-500 mt-3">{data.locations_and_hours.hours_note}</p>
-              )}
-            </div>
-          )}
-        </Card>
-      )}
-
-      {/* FAQs */}
-      {data.faqs?.all_questions && (
-        <Card className="p-6">
-          <h2 className="text-xl font-bold text-slate-900 mb-6">❓ Frequently Asked Questions</h2>
-          
-          {/* What's New */}
-          {data.faqs.whats_new?.questions && safeArray(data.faqs.whats_new.questions).length > 0 && (
-            <div className="mb-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <h3 className="font-semibold text-slate-900 mb-3">
-                What's New? {data.faqs.whats_new.month_label && `(${data.faqs.whats_new.month_label})`}
-              </h3>
-              <div className="space-y-4">
-                {safeArray(data.faqs.whats_new.questions).map((faq: any, idx: number) => (
-                  <div key={idx}>
-                    <p className="font-medium text-slate-900 mb-1">{safeString(faq.question || faq.q)}</p>
-                    <p className="text-slate-700">{safeString(faq.answer || faq.a)}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* All Questions by Category */}
-          <div className="space-y-6">
-            {Object.entries(data.faqs.all_questions).map(([category, questions]: [string, any]) => (
-              <div key={category}>
-                <h3 className="font-semibold text-slate-900 mb-3 capitalize">
-                  {category.replace(/_/g, ' ')}
-                </h3>
-                <div className="space-y-4">
-                  {safeArray(questions).map((faq: any, idx: number) => (
-                    <div key={idx} className="border-l-4 border-blue-500 pl-4">
-                      <p className="font-medium text-slate-900 mb-1">{safeString(faq.question || faq.q)}</p>
-                      <p className="text-slate-700">{safeString(faq.answer || faq.a)}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Phone (from Step 1)</label>
+            <Input value={company.phone || ''} disabled className="bg-slate-100" />
           </div>
-        </Card>
-      )}
-
-      {/* Reviews */}
-      {safeArray(data.featured_reviews?.items).length > 0 && (
-        <Card className="p-6">
-          <h2 className="text-xl font-bold text-slate-900 mb-6">Featured Reviews</h2>
-          <div className="space-y-4">
-            {safeArray(data.featured_reviews.items).map((review: any, idx: number) => (
-              <Card key={idx} className="p-4 border-2">
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <p className="font-semibold text-slate-900">{review.reviewer || 'Anonymous'}</p>
-                    <div className="flex items-center gap-2 text-sm text-slate-600">
-                      <div className="flex">
-                        {Array.from({ length: review.stars || 5 }).map((_, i) => (
-                          <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                        ))}
-                      </div>
-                      {review.date && <span>• {review.date}</span>}
-                      {review.source && <span>• {review.source}</span>}
-                    </div>
-                  </div>
-                </div>
-                {review.excerpt && (
-                  <p className="text-slate-700 italic">"{review.excerpt}"</p>
-                )}
-              </Card>
-            ))}
+          <div className="col-span-2">
+            <label className="block text-sm font-medium text-slate-700 mb-2">Website (from Step 1)</label>
+            <Input value={company.website || ''} disabled className="bg-slate-100" />
           </div>
-        </Card>
-      )}
-
-      {/* Photo Gallery */}
-      <Card className="p-6">
-        <h2 className="text-xl font-bold text-slate-900 mb-6">📸 Photo Gallery</h2>
-        {(() => {
-          const intakeImages = safeArray(data.photo_gallery?.images)
-            .filter((img: any) => img.image_url && img.image_url !== '<>')
-            .map((img: any) => ({
-              url: img.image_url,
-              alt: img.alt || 'Gallery image',
-              source: 'intake'
-            }));
-          
-          const uploadedImages = safeArray(intake?.galleryLinks)
-            .map((url: string) => ({
-              url: url,
-              alt: 'Uploaded image',
-              source: 'uploaded'
-            }));
-          
-          const allImages = [...intakeImages, ...uploadedImages];
-          
-          return allImages.length > 0 ? (
-            <>
-              <div className="mb-4 flex items-center justify-between">
-                <p className="text-sm text-slate-600">
-                  <span className="font-medium">{intakeImages.length}</span> from intake • <span className="font-medium">{uploadedImages.length}</span> uploaded
-                </p>
-                <Badge variant="outline" className="font-semibold">
-                  {allImages.length} total {allImages.length === 1 ? 'image' : 'images'}
-                </Badge>
-              </div>
-              
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {allImages.map((image: any, idx: number) => (
-                  <div key={idx} className="relative aspect-video bg-slate-100 rounded-lg overflow-hidden border-2 hover:border-blue-400 transition-colors group">
-                    <img 
-                      src={image.url} 
-                      alt={image.alt}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100"%3E%3Crect fill="%23f1f5f9" width="100" height="100"/%3E%3Ctext fill="%2394a3b8" font-size="14" x="50%25" y="50%25" text-anchor="middle" dominant-baseline="middle"%3EImage Unavailable%3C/text%3E%3C/svg%3E';
-                      }}
-                    />
-                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Badge 
-                        variant={image.source === 'intake' ? 'secondary' : 'default'} 
-                        className="text-xs shadow-lg"
-                      >
-                        {image.source === 'intake' ? '📋 Intake' : '📤 Uploaded'}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              
-              {data.photo_gallery?.note && (
-                <p className="text-sm text-slate-500 mt-4 italic">{data.photo_gallery.note}</p>
-              )}
-            </>
-          ) : (
-            <div className="text-center py-12 bg-slate-50 rounded-lg border-2 border-dashed">
-              <p className="text-slate-400 italic mb-3">No photos available yet</p>
-              <p className="text-xs text-slate-500">
-                Images from intake will appear here automatically. You can also upload images in the Media tab.
-              </p>
-            </div>
-          );
-        })()}
+          <div className="col-span-2">
+            <label className="block text-sm font-medium text-slate-700 mb-2">Address (from Step 1)</label>
+            <Input value={company.address || ''} disabled className="bg-slate-100" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">City (from Step 1)</label>
+            <Input value={company.city || ''} disabled className="bg-slate-100" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">State (from Step 1)</label>
+            <Input value={company.state || ''} disabled className="bg-slate-100" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">ZIP (from Step 1)</label>
+            <Input value={company.zip || ''} disabled className="bg-slate-100" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Plan (from Step 1)</label>
+            <Input value={company.plan || ''} disabled className="bg-slate-100" />
+          </div>
+        </div>
       </Card>
 
-      {/* Monthly Activity */}
-      {(data.eyes_ai_monthly_activity?.discover || data.eyes_ai_monthly_activity?.verified) && (
-        <Card className="p-6">
-          <h2 className="text-xl font-bold text-slate-900 mb-6">Monthly Activity Section</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {data.eyes_ai_monthly_activity.discover && (
-              <div>
-                <h3 className="font-semibold text-slate-900 mb-2">Discover Package</h3>
-                <div className="flex flex-wrap gap-2">
-                  {safeArray(data.eyes_ai_monthly_activity.discover).map((item: any, idx: number) => (
-                    <Badge key={idx} variant="outline">{safeString(item)}</Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-            {data.eyes_ai_monthly_activity.verified && (
-              <div>
-                <h3 className="font-semibold text-slate-900 mb-2">Verified Package</h3>
-                <div className="flex flex-wrap gap-2">
-                  {safeArray(data.eyes_ai_monthly_activity.verified).map((item: any, idx: number) => (
-                    <Badge key={idx} variant="outline">{safeString(item)}</Badge>
-                  ))}
-                </div>
-              </div>
-            )}
+      {/* Hero Section (Step 2) */}
+      <Card className="p-6">
+        <h3 className="text-lg font-semibold text-slate-900 mb-4">Hero Section (Step 2 - ROMA JSON)</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Company Name (CMS Field)</label>
+            <Input value={romaData.hero?.company_name || ''} onChange={(e) => updateField('hero.company_name', e.target.value)} placeholder={company.name} />
           </div>
-          {data.eyes_ai_monthly_activity.note && (
-            <p className="text-sm text-slate-500 mt-4">{data.eyes_ai_monthly_activity.note}</p>
-          )}
-        </Card>
-      )}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Tagline</label>
+            <Input value={romaData.hero?.tagline || ''} onChange={(e) => updateField('hero.tagline', e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Phone</label>
+            <Input value={romaData.hero?.phone || ''} onChange={(e) => updateField('hero.phone', e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
+            <Input value={romaData.hero?.email || ''} onChange={(e) => updateField('hero.email', e.target.value)} />
+          </div>
+          <div className="col-span-2">
+            <label className="block text-sm font-medium text-slate-700 mb-2">AI Summary</label>
+            <Textarea value={romaData.hero?.ai_summary || ''} onChange={(e) => updateField('hero.ai_summary', e.target.value)} rows={3} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">AI Signal 1 (Feature Tag)</label>
+            <Input value={romaData.hero?.ai_signal_1 || ''} onChange={(e) => updateField('hero.ai_signal_1', e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">AI Signal 2 (Feature Tag)</label>
+            <Input value={romaData.hero?.ai_signal_2 || ''} onChange={(e) => updateField('hero.ai_signal_2', e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">AI Signal 3 (Feature Tag)</label>
+            <Input value={romaData.hero?.ai_signal_3 || ''} onChange={(e) => updateField('hero.ai_signal_3', e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">AI Signal 4 (Feature Tag)</label>
+            <Input value={romaData.hero?.ai_signal_4 || ''} onChange={(e) => updateField('hero.ai_signal_4', e.target.value)} />
+          </div>
+        </div>
+      </Card>
 
-      {/* Get in Touch */}
-      {data.get_in_touch && (
-        <Card className="p-6 bg-slate-50">
-          <h2 className="text-xl font-bold text-slate-900 mb-3">
-            Get in Touch with {data.get_in_touch.company_name || company.name}
-          </h2>
-          {data.get_in_touch.city_state && (
-            <p className="text-slate-600 mb-2">{data.get_in_touch.city_state}</p>
-          )}
-          {data.get_in_touch.tagline && (
-            <p className="text-sm text-slate-500 mb-4">{data.get_in_touch.tagline}</p>
-          )}
-          {safeArray(data.get_in_touch.buttons).length > 0 && (
-            <div className="flex flex-wrap gap-3">
-              {safeArray(data.get_in_touch.buttons).map((button: any, idx: number) => (
-                <Button key={idx} variant="default" size="sm">
-                  {safeString(button)}
-                </Button>
-              ))}
+      {/* About Section */}
+      <Card className="p-6">
+        <h3 className="text-lg font-semibold text-slate-900 mb-4">About Section</h3>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">About Title</label>
+            <Input value={romaData.about?.about_title || ''} onChange={(e) => updateField('about.about_title', e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">About Text</label>
+            <Textarea value={romaData.about?.about_text || ''} onChange={(e) => updateField('about.about_text', e.target.value)} rows={4} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Badge 1</label>
+              <Input value={romaData.about?.about_badge_1 || ''} onChange={(e) => updateField('about.about_badge_1', e.target.value)} />
             </div>
-          )}
-        </Card>
-      )}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Badge 2</label>
+              <Input value={romaData.about?.about_badge_2 || ''} onChange={(e) => updateField('about.about_badge_2', e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Badge 3</label>
+              <Input value={romaData.about?.about_badge_3 || ''} onChange={(e) => updateField('about.about_badge_3', e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Badge 4</label>
+              <Input value={romaData.about?.about_badge_4 || ''} onChange={(e) => updateField('about.about_badge_4', e.target.value)} />
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Services */}
+      <Card className="p-6">
+        <h3 className="text-lg font-semibold text-slate-900 mb-4">Services / Menu Items</h3>
+        <div className="space-y-4">
+          {[1, 2, 3, 4, 5].map((num) => {
+            const service = romaData.services?.[`service_${num}`];
+            if (!service) return null;
+
+            return (
+              <Card key={num} className="p-4 border-2">
+                <h4 className="font-medium text-slate-900 mb-3">Service {num}</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Title</label>
+                    <Input value={service.title || ''} onChange={(e) => updateField(`services.service_${num}.title`, e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Emoji</label>
+                    <Input value={service.emoji || ''} onChange={(e) => updateField(`services.service_${num}.emoji`, e.target.value)} />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Description</label>
+                    <Textarea value={service.description || ''} onChange={(e) => updateField(`services.service_${num}.description`, e.target.value)} rows={2} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Price</label>
+                    <Input value={service.price || ''} onChange={(e) => updateField(`services.service_${num}.price`, e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Duration</label>
+                    <Input value={service.duration || ''} onChange={(e) => updateField(`services.service_${num}.duration`, e.target.value)} />
+                  </div>
+                  {[1, 2, 3, 4, 5].map((i) => service[`included_${i}`] && (
+                    <div key={i} className="col-span-2">
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Included {i}</label>
+                      <Input value={service[`included_${i}`] || ''} onChange={(e) => updateField(`services.service_${num}.included_${i}`, e.target.value)} />
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* Quick Reference Guide */}
+      <Card className="p-6">
+        <h3 className="text-lg font-semibold text-slate-900 mb-4">Quick Reference Guide / Table</h3>
+        <div className="space-y-4">
+          <div className="grid grid-cols-5 gap-2">
+            {[1, 2, 3, 4, 5].map((num) => (
+              <div key={num}>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Column {num}</label>
+                <Input value={romaData.quick_reference_guide?.[`column_${num}`] || ''} onChange={(e) => updateField(`quick_reference_guide.column_${num}`, e.target.value)} />
+              </div>
+            ))}
+          </div>
+          {[1, 2, 3, 4, 5].map((rowNum) => {
+            const row = romaData.quick_reference_guide?.[`row_${rowNum}`];
+            if (!row) return null;
+
+            return (
+              <div key={rowNum} className="grid grid-cols-5 gap-2">
+                {[1, 2, 3, 4, 5].map((colNum) => (
+                  <Input key={colNum} value={row[`col_${colNum}`] || ''} onChange={(e) => updateField(`quick_reference_guide.row_${rowNum}.col_${colNum}`, e.target.value)} placeholder={`Row ${rowNum} Col ${colNum}`} />
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* FAQs */}
+      <Card className="p-6">
+        <h3 className="text-lg font-semibold text-slate-900 mb-4">FAQs</h3>
+        <div className="space-y-4">
+          {[1, 2, 3, 4, 5].map((num) => {
+            const faq = romaData.faqs?.[`faq_${num}`];
+            if (!faq) return null;
+
+            return (
+              <Card key={num} className="p-3 border">
+                <div className="space-y-2">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Question {num}</label>
+                    <Input value={faq.question || ''} onChange={(e) => updateField(`faqs.faq_${num}.question`, e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Answer {num}</label>
+                    <Textarea value={faq.answer || ''} onChange={(e) => updateField(`faqs.faq_${num}.answer`, e.target.value)} rows={2} />
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* Pricing Information */}
+      <Card className="p-6 bg-green-50 border-green-200">
+        <h3 className="text-lg font-semibold text-slate-900 mb-4">💰 Pricing Information</h3>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Pricing Summary</label>
+            <Textarea value={romaData.pricing_information?.pricing_summary || ''} onChange={(e) => updateField('pricing_information.pricing_summary', e.target.value)} rows={3} />
+          </div>
+        </div>
+      </Card>
+
+      {/* Contact & Location */}
+      <Card className="p-6">
+        <h3 className="text-lg font-semibold text-slate-900 mb-4">Contact & Location</h3>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Footer Address</label>
+            <Input value={romaData.get_in_touch?.footer_address || ''} onChange={(e) => updateField('get_in_touch.footer_address', e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">City, State</label>
+            <Input value={romaData.get_in_touch?.city_state || ''} onChange={(e) => updateField('get_in_touch.city_state', e.target.value)} placeholder="e.g., Miami, FL" />
+          </div>
+        </div>
+      </Card>
+
+      {/* SEO Metadata */}
+      <Card className="p-6">
+        <h3 className="text-lg font-semibold text-slate-900 mb-4">SEO Metadata & Schema</h3>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">SEO Meta Title</label>
+            <Input value={romaData.seo_schema?.seo_meta_title || ''} onChange={(e) => updateField('seo_schema.seo_meta_title', e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">SEO H1</label>
+            <Input value={romaData.seo_schema?.seo_h1 || ''} onChange={(e) => updateField('seo_schema.seo_h1', e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">SEO Meta Description</label>
+            <Textarea value={romaData.seo_schema?.seo_meta_description || ''} onChange={(e) => updateField('seo_schema.seo_meta_description', e.target.value)} rows={3} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">SEO H2 #1</label>
+              <Input value={romaData.seo_schema?.seo_h2_1 || ''} onChange={(e) => updateField('seo_schema.seo_h2_1', e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">SEO H2 #2</label>
+              <Input value={romaData.seo_schema?.seo_h2_2 || ''} onChange={(e) => updateField('seo_schema.seo_h2_2', e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">SEO H2 #3</label>
+              <Input value={romaData.seo_schema?.seo_h2_3 || ''} onChange={(e) => updateField('seo_schema.seo_h2_3', e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">SEO H2 #4</label>
+              <Input value={romaData.seo_schema?.seo_h2_4 || ''} onChange={(e) => updateField('seo_schema.seo_h2_4', e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-slate-700">Schema.org JSON-LD (Structured Data)</label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setSchemaExpanded(!schemaExpanded);
+                }}
+                className="h-6 px-2 text-xs"
+              >
+                {schemaExpanded ? (
+                  <>
+                    <ChevronUp className="w-3 h-3 mr-1" />
+                    Collapse
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-3 h-3 mr-1" />
+                    Expand
+                  </>
+                )}
+              </Button>
+            </div>
+            <Textarea
+              key={`schema-${schemaExpanded}`}
+              value={typeof romaData.seo_schema?.seo_jsonld === 'object' ? JSON.stringify(romaData.seo_schema?.seo_jsonld, null, 2) : (romaData.seo_schema?.seo_jsonld || '')}
+              onChange={(e) => {
+                try {
+                  const parsed = JSON.parse(e.target.value);
+                  updateField('seo_schema.seo_jsonld', parsed);
+                } catch {
+                  updateField('seo_schema.seo_jsonld', e.target.value);
+                }
+              }}
+              rows={schemaExpanded ? 15 : 3}
+              className="font-mono text-xs"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Canonical URL</label>
+              <Input value={romaData.seo_schema?.seo_canonical || ''} onChange={(e) => updateField('seo_schema.seo_canonical', e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Robots</label>
+              <Input value={romaData.seo_schema?.seo_robots || ''} onChange={(e) => updateField('seo_schema.seo_robots', e.target.value)} placeholder="index, follow" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">OpenGraph Title</label>
+            <Input value={romaData.seo_schema?.seo_og_title || ''} onChange={(e) => updateField('seo_schema.seo_og_title', e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">OpenGraph Description</label>
+            <Textarea value={romaData.seo_schema?.seo_og_description || ''} onChange={(e) => updateField('seo_schema.seo_og_description', e.target.value)} rows={2} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">OpenGraph Image URL</label>
+            <Input value={romaData.seo_schema?.seo_og_image || ''} onChange={(e) => updateField('seo_schema.seo_og_image', e.target.value)} />
+          </div>
+        </div>
+      </Card>
     </div>
   );
 }

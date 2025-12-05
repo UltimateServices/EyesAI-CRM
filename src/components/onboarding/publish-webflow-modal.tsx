@@ -1,10 +1,12 @@
 'use client';
+// BUILD VERSION: 2024-12-05-21:30 - Fixed what_to_expect scenarios
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { X, Loader2, AlertCircle, CheckCircle2, ExternalLink, Upload, MapPin, Clock, Phone, Globe, Mail, Star } from 'lucide-react';
 import { useStore } from '@/lib/store';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 interface PublishWebflowModalProps {
   companyId: string;
@@ -20,27 +22,56 @@ export function PublishWebflowModal({ companyId, companyName, onClose, onSuccess
   const [liveUrl, setLiveUrl] = useState('');
   const [slug, setSlug] = useState('');
   const [intakeData, setIntakeData] = useState<any>(null);
-  const [loadingIntake, setLoadingIntake] = useState(true);
+  const [mediaItems, setMediaItems] = useState<any[]>([]);
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [loadingChecklist, setLoadingChecklist] = useState(true);
   const companies = useStore((state) => state.companies);
 
   const company = companies.find(c => c.id === companyId);
 
-  // Fetch intake data for full preview
+  // Fetch data for checklist
   useEffect(() => {
-    const fetchIntakeData = async () => {
+    const fetchChecklistData = async () => {
+      const supabase = createClientComponentClient();
+
       try {
-        const response = await fetch(`/api/intakes?companyId=${companyId}`);
-        const data = await response.json();
-        if (data.success && data.intake?.roma_data) {
-          setIntakeData(data.intake.roma_data);
+        // Fetch intake data
+        const intakeResponse = await fetch(`/api/intakes?companyId=${companyId}`);
+        const intakeResult = await intakeResponse.json();
+
+        if (intakeResult.success && intakeResult.intake?.roma_data) {
+          setIntakeData(intakeResult.intake.roma_data);
+        }
+
+        // Fetch media items
+        console.log('Fetching media for companyId:', companyId);
+        const mediaResponse = await fetch(`/api/media?companyId=${companyId}`);
+        const mediaResult = await mediaResponse.json();
+        console.log('Media API response:', mediaResult);
+
+        if (mediaResult.data) {
+          console.log('Setting mediaItems:', mediaResult.data);
+          setMediaItems(mediaResult.data);
+        } else {
+          console.error('Media fetch failed or no data:', mediaResult);
+        }
+
+        // Fetch reviews directly from database (don't filter by status - show all)
+        const { data: reviewsData } = await supabase
+          .from('reviews')
+          .select('*')
+          .eq('company_id', companyId);
+
+        if (reviewsData) {
+          setReviews(reviewsData);
         }
       } catch (err) {
-        console.error('Error fetching intake data:', err);
+        console.error('Error fetching checklist data:', err);
       } finally {
-        setLoadingIntake(false);
+        setLoadingChecklist(false);
       }
     };
-    fetchIntakeData();
+    fetchChecklistData();
   }, [companyId]);
 
   const handlePublish = async () => {
@@ -57,7 +88,8 @@ export function PublishWebflowModal({ companyId, companyName, onClose, onSuccess
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to publish to Webflow');
+        const errorDetails = data.details ? `\n\nDetails: ${data.details}` : '';
+        throw new Error((data.error || 'Failed to publish to Webflow') + errorDetails);
       }
 
       setLiveUrl(data.liveUrl);
@@ -136,246 +168,164 @@ export function PublishWebflowModal({ companyId, companyName, onClose, onSuccess
                 </div>
 
                 {/* Loading State */}
-                {loadingIntake && (
+                {loadingChecklist && (
                   <div className="flex items-center justify-center p-8">
                     <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
                     <span className="ml-2 text-sm text-slate-600">Loading profile data...</span>
                   </div>
                 )}
 
-                {/* Full Profile Preview */}
-                {!loadingIntake && intakeData && (
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-bold text-slate-900 border-b pb-2">Profile Preview</h3>
+                {/* Webflow Sync Checklist */}
+                {!loadingChecklist && (() => {
+                  console.log('=== STEP 5 DEBUG ===');
+                  console.log('mediaItems:', mediaItems);
+                  console.log('mediaItems count:', mediaItems.length);
+                  console.log('Active media:', mediaItems.filter(m => m.status === 'active'));
 
-                    {/* Hero Section */}
-                    {intakeData.hero && (
-                      <div className="border rounded-lg p-4 space-y-3">
-                        <h4 className="font-semibold text-slate-900 flex items-center gap-2">
-                          <Star className="w-4 h-4" />
-                          Hero Section
-                        </h4>
-                        <div className="grid grid-cols-2 gap-3 text-sm">
-                          <div className="col-span-2">
-                            <span className="text-slate-600">Business Name:</span>
-                            <p className="font-medium">{intakeData.hero.business_name}</p>
+                  // Calculate counts for each section - handle both old and new ROMA formats
+                  // Services - check both 'services_offered' and 'services'
+                  const servicesCount = intakeData?.services_offered
+                    ? Object.keys(intakeData.services_offered).filter(k => k.startsWith('service_') && intakeData.services_offered[k]?.title).length
+                    : intakeData?.services
+                      ? Object.keys(intakeData.services).filter(k => k.startsWith('service_') && intakeData.services[k]?.title).length
+                      : 0;
+
+                  const faqsCount = intakeData?.faqs ? Object.keys(intakeData.faqs).filter(k => k.startsWith('faq_') && intakeData.faqs[k]?.question).length : 0;
+
+                  // Scenarios - it's an object with scenario_1, scenario_2, etc. keys
+                  const scenariosCount = intakeData?.what_to_expect
+                    ? Object.keys(intakeData.what_to_expect).filter(k => k.startsWith('scenario_') && intakeData.what_to_expect[k]?.title).length
+                    : 0;
+
+                  // Locations - check both formats
+                  const locationsCount = intakeData?.locations
+                    ? Object.keys(intakeData.locations).filter(k => k.startsWith('location_') && intakeData.locations[k]?.address_1).length
+                    : intakeData?.locations_and_hours?.primary_location ? 1 : 0;
+
+                  // Business info - check both old ROMA format (company_name) and new format (business_name)
+                  const hasBusinessName = intakeData?.hero?.company_name || intakeData?.hero?.business_name || intakeData?.business_name || company?.name;
+                  const hasTagline = intakeData?.hero?.tagline || intakeData?.tagline;
+                  const hasCategory = intakeData?.hero?.category || intakeData?.category;
+
+                  // Logo count from Step 4
+                  const logoCount = mediaItems.filter(m => m.status === 'active' && (m.internal_tags?.includes('logo') || m.category === 'logo')).length;
+
+                  // Gallery count from Step 4 (everything that's NOT a logo)
+                  const galleryItemsFromMedia = mediaItems.filter(m => m.status === 'active' && !m.internal_tags?.includes('logo') && m.category !== 'logo');
+                  const galleryCount = galleryItemsFromMedia.length;
+
+                  const activeReviews = reviews;
+
+                  return (
+                    <div className="space-y-3">
+                      <h3 className="text-lg font-bold text-slate-900 border-b pb-2">Webflow CMS Fields Ready to Sync</h3>
+
+                      <div className="border rounded-lg divide-y">
+                        {/* Business Info */}
+                        <div className="p-3 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className={`w-5 h-5 ${hasBusinessName ? 'text-green-600' : 'text-slate-300'}`} />
+                            <span className="font-medium text-sm">Business Information</span>
                           </div>
-                          {intakeData.hero.tagline && (
-                            <div className="col-span-2">
-                              <span className="text-slate-600">Tagline:</span>
-                              <p className="font-medium italic">{intakeData.hero.tagline}</p>
-                            </div>
-                          )}
-                          {intakeData.hero.quick_actions && (
-                            <>
-                              {intakeData.hero.quick_actions.call_tel && (
-                                <div>
-                                  <span className="text-slate-600 flex items-center gap-1">
-                                    <Phone className="w-3 h-3" /> Phone:
-                                  </span>
-                                  <p className="font-medium">{intakeData.hero.quick_actions.call_tel.replace('tel:', '')}</p>
-                                </div>
-                              )}
-                              {intakeData.hero.quick_actions.website_url && (
-                                <div>
-                                  <span className="text-slate-600 flex items-center gap-1">
-                                    <Globe className="w-3 h-3" /> Website:
-                                  </span>
-                                  <p className="font-medium truncate">{intakeData.hero.quick_actions.website_url}</p>
-                                </div>
-                              )}
-                              {intakeData.hero.quick_actions.email_mailto && (
-                                <div>
-                                  <span className="text-slate-600 flex items-center gap-1">
-                                    <Mail className="w-3 h-3" /> Email:
-                                  </span>
-                                  <p className="font-medium">{intakeData.hero.quick_actions.email_mailto.replace('mailto:', '')}</p>
-                                </div>
-                              )}
-                            </>
-                          )}
+                          <span className="text-xs text-slate-600">
+                            {hasBusinessName ? `${company.name}` : 'Missing'}
+                            {hasTagline && ', Tagline'}
+                            {hasCategory && ', Category'}
+                          </span>
+                        </div>
+
+                        {/* Logo */}
+                        <div className="p-3 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className={`w-5 h-5 ${logoCount > 0 ? 'text-green-600' : 'text-slate-300'}`} />
+                            <span className="font-medium text-sm">Logo</span>
+                          </div>
+                          <span className="text-xs text-slate-600">{logoCount > 0 ? `${logoCount} image` : 'Missing'}</span>
+                        </div>
+
+                        {/* Gallery Images */}
+                        <div className="p-3 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className={`w-5 h-5 ${galleryCount >= 5 ? 'text-green-600' : galleryCount > 0 ? 'text-yellow-500' : 'text-slate-300'}`} />
+                            <span className="font-medium text-sm">Gallery Images</span>
+                          </div>
+                          <span className="text-xs text-slate-600">{galleryCount} images {galleryCount < 5 && `(min 5 recommended)`}</span>
+                        </div>
+
+                        {/* Reviews */}
+                        <div className="p-3 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className={`w-5 h-5 ${activeReviews.length >= 5 ? 'text-green-600' : activeReviews.length > 0 ? 'text-yellow-500' : 'text-slate-300'}`} />
+                            <span className="font-medium text-sm">Reviews</span>
+                          </div>
+                          <span className="text-xs text-slate-600">{activeReviews.length} reviews</span>
+                        </div>
+
+                        {/* Services */}
+                        <div className="p-3 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className={`w-5 h-5 ${servicesCount > 0 ? 'text-green-600' : 'text-slate-300'}`} />
+                            <span className="font-medium text-sm">Services</span>
+                          </div>
+                          <span className="text-xs text-slate-600">{servicesCount} services</span>
+                        </div>
+
+                        {/* FAQs */}
+                        <div className="p-3 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className={`w-5 h-5 ${faqsCount > 0 ? 'text-green-600' : 'text-slate-300'}`} />
+                            <span className="font-medium text-sm">FAQs</span>
+                          </div>
+                          <span className="text-xs text-slate-600">{faqsCount} FAQs</span>
+                        </div>
+
+                        {/* Scenarios */}
+                        <div className="p-3 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className={`w-5 h-5 ${scenariosCount > 0 ? 'text-green-600' : 'text-slate-300'}`} />
+                            <span className="font-medium text-sm">Use Case Scenarios</span>
+                          </div>
+                          <span className="text-xs text-slate-600">{scenariosCount} scenarios</span>
+                        </div>
+
+                        {/* Locations */}
+                        <div className="p-3 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className={`w-5 h-5 ${locationsCount > 0 ? 'text-green-600' : 'text-slate-300'}`} />
+                            <span className="font-medium text-sm">Locations</span>
+                          </div>
+                          <span className="text-xs text-slate-600">{locationsCount} location</span>
                         </div>
                       </div>
-                    )}
 
-                    {/* About & AI Summary */}
-                    {intakeData.about_and_badges && (
-                      <div className="border rounded-lg p-4 space-y-3">
-                        <h4 className="font-semibold text-slate-900">About & Summary</h4>
-                        {intakeData.about_and_badges.about_text && (
-                          <div>
-                            <span className="text-slate-600 text-sm">About:</span>
-                            <p className="text-sm mt-1">{intakeData.about_and_badges.about_text}</p>
+                      {/* Show gallery preview if images exist - ONLY from Step 4 */}
+                      {galleryCount > 0 && (
+                        <div className="border rounded-lg p-3">
+                          <h4 className="font-semibold text-sm text-slate-900 mb-2">
+                            Gallery Preview (from Step 4 Media Library)
+                          </h4>
+                          <div className="grid grid-cols-5 gap-2">
+                            {galleryItemsFromMedia.slice(0, 5).map((item: any) => (
+                              <div key={item.id} className="aspect-square bg-slate-100 rounded overflow-hidden">
+                                <img
+                                  src={item.file_url}
+                                  alt={item.alt_text || 'Gallery image'}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                            ))}
                           </div>
-                        )}
-                        {intakeData.about_and_badges.ai_summary_120w && (
-                          <div>
-                            <span className="text-slate-600 text-sm">AI Summary:</span>
-                            <p className="text-sm mt-1 italic">{intakeData.about_and_badges.ai_summary_120w}</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Services */}
-                    {intakeData.services_offered && (
-                      <div className="border rounded-lg p-4 space-y-3">
-                        <h4 className="font-semibold text-slate-900">Services Offered</h4>
-                        <div className="space-y-2">
-                          {Object.entries(intakeData.services_offered).map(([key, service]: [string, any]) => {
-                            if (key.startsWith('service_') && service.title) {
-                              return (
-                                <div key={key} className="bg-slate-50 p-3 rounded">
-                                  <p className="font-medium text-sm">{service.title}</p>
-                                  {service.description && (
-                                    <p className="text-xs text-slate-600 mt-1">{service.description}</p>
-                                  )}
-                                  {service.starting_price && (
-                                    <p className="text-xs text-green-700 font-semibold mt-1">
-                                      Starting at: {service.starting_price}
-                                    </p>
-                                  )}
-                                </div>
-                              );
-                            }
-                            return null;
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* FAQs */}
-                    {intakeData.faqs && (
-                      <div className="border rounded-lg p-4 space-y-3">
-                        <h4 className="font-semibold text-slate-900">Frequently Asked Questions</h4>
-                        <div className="space-y-2">
-                          {Object.entries(intakeData.faqs).map(([key, faq]: [string, any]) => {
-                            if (key.startsWith('faq_') && faq.question) {
-                              return (
-                                <div key={key} className="bg-slate-50 p-3 rounded">
-                                  <p className="font-medium text-sm">{faq.question}</p>
-                                  {faq.answer && (
-                                    <p className="text-xs text-slate-600 mt-1">{faq.answer}</p>
-                                  )}
-                                </div>
-                              );
-                            }
-                            return null;
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Scenarios */}
-                    {intakeData.scenarios_and_tips && (
-                      <div className="border rounded-lg p-4 space-y-3">
-                        <h4 className="font-semibold text-slate-900">Use Case Scenarios</h4>
-                        <div className="space-y-2">
-                          {Object.entries(intakeData.scenarios_and_tips).map(([key, scenario]: [string, any]) => {
-                            if (key.startsWith('scenario_') && scenario.heading) {
-                              return (
-                                <div key={key} className="bg-slate-50 p-3 rounded">
-                                  <p className="font-medium text-sm">{scenario.heading}</p>
-                                  {scenario.pro_tip && (
-                                    <p className="text-xs text-blue-700 mt-1 italic">💡 Pro Tip: {scenario.pro_tip}</p>
-                                  )}
-                                </div>
-                              );
-                            }
-                            return null;
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Locations & Hours */}
-                    {intakeData.locations_and_hours?.primary_location && (
-                      <div className="border rounded-lg p-4 space-y-3">
-                        <h4 className="font-semibold text-slate-900 flex items-center gap-2">
-                          <MapPin className="w-4 h-4" />
-                          Location & Hours
-                        </h4>
-                        <div className="bg-slate-50 p-3 rounded space-y-2">
-                          <div>
-                            <span className="text-slate-600 text-sm">Address:</span>
-                            <p className="text-sm">{intakeData.locations_and_hours.primary_location.street_address}</p>
-                            <p className="text-sm">
-                              {intakeData.locations_and_hours.primary_location.city}, {intakeData.locations_and_hours.primary_location.state} {intakeData.locations_and_hours.primary_location.zip}
-                            </p>
-                          </div>
-                          {intakeData.locations_and_hours.primary_location.hours_summary && (
-                            <div>
-                              <span className="text-slate-600 text-sm flex items-center gap-1">
-                                <Clock className="w-3 h-3" /> Hours:
-                              </span>
-                              <p className="text-sm">{intakeData.locations_and_hours.primary_location.hours_summary}</p>
-                            </div>
+                          {galleryCount > 5 && (
+                            <p className="text-xs text-slate-500 mt-2">+{galleryCount - 5} more images</p>
                           )}
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
+                  );
+                })()}
 
-                    {/* Featured Reviews */}
-                    {intakeData.featured_reviews && (
-                      <div className="border rounded-lg p-4 space-y-3">
-                        <h4 className="font-semibold text-slate-900">Featured Reviews</h4>
-                        <div className="space-y-2">
-                          {Object.entries(intakeData.featured_reviews).map(([key, review]: [string, any]) => {
-                            if (key.startsWith('review_') && review.reviewer) {
-                              return (
-                                <div key={key} className="bg-slate-50 p-3 rounded">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <p className="font-medium text-sm">{review.reviewer}</p>
-                                    {review.stars && (
-                                      <div className="flex items-center text-yellow-500">
-                                        {Array.from({ length: review.stars }).map((_, i) => (
-                                          <Star key={i} className="w-3 h-3 fill-current" />
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                  {review.excerpt && (
-                                    <p className="text-xs text-slate-600">{review.excerpt}</p>
-                                  )}
-                                  {review.source && (
-                                    <p className="text-xs text-slate-500 mt-1">Source: {review.source}</p>
-                                  )}
-                                </div>
-                              );
-                            }
-                            return null;
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Photo Gallery */}
-                    {intakeData.photo_gallery && (
-                      <div className="border rounded-lg p-4 space-y-3">
-                        <h4 className="font-semibold text-slate-900">Photo Gallery</h4>
-                        <div className="grid grid-cols-3 gap-2">
-                          {Object.entries(intakeData.photo_gallery).map(([key, image]: [string, any]) => {
-                            if (key.startsWith('image_') && image.url && image.url !== '<>') {
-                              return (
-                                <div key={key} className="aspect-square bg-slate-100 rounded overflow-hidden">
-                                  <img
-                                    src={image.url}
-                                    alt={image.alt || 'Gallery image'}
-                                    className="w-full h-full object-cover"
-                                  />
-                                </div>
-                              );
-                            }
-                            return null;
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Fallback if no intake data */}
-                {!loadingIntake && !intakeData && (
+                {/* Fallback if no data */}
+                {!loadingChecklist && !intakeData && (
                   <div className="border rounded-lg p-4 space-y-3">
                     <h3 className="font-semibold text-slate-900">Basic Profile Information</h3>
                     <div className="grid grid-cols-2 gap-3 text-sm">

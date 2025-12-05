@@ -486,7 +486,7 @@ export default function SettingsPage() {
           <p className="text-sm text-green-700 mt-4">
             📋 Copy these credentials and send them to the user. They can login immediately at{' '}
             <span className="font-mono bg-white px-2 py-1 rounded">
-              https://eyes-ai-crm.vercel.app/login
+              https://app.eyesai.ai/login
             </span>
           </p>
           <Button
