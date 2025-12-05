@@ -68,6 +68,10 @@ export default function SettingsPage() {
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
 
+  // Stripe webhook test state
+  const [stripeTestStatus, setStripeTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [stripeTestMessage, setStripeTestMessage] = useState<string>('');
+
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
@@ -391,6 +395,34 @@ export default function SettingsPage() {
     }
   };
 
+  const testStripeWebhook = async () => {
+    setStripeTestStatus('testing');
+    setStripeTestMessage('Testing Stripe connection...');
+
+    try {
+      const response = await fetch('/api/webhooks/stripe/test', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setStripeTestStatus('error');
+        setStripeTestMessage(data.error || 'Failed to test Stripe connection');
+        return;
+      }
+
+      setStripeTestStatus('success');
+      setStripeTestMessage(`✅ Stripe connected! Account: ${data.account.email || data.account.id}\nProducts: ${data.products.length} found\nWebhook: ${data.webhook.configured ? 'Configured' : 'Not configured'}`);
+    } catch (error: any) {
+      setStripeTestStatus('error');
+      setStripeTestMessage(error.message || 'Failed to connect to Stripe');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -678,6 +710,77 @@ export default function SettingsPage() {
             </Card>
           ))}
         </div>
+      </Card>
+
+      {/* Stripe Integration */}
+      <Card className="p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <Zap className="w-5 h-5 text-purple-600" />
+          <h2 className="text-xl font-semibold text-slate-900">Stripe Integration</h2>
+          {stripeTestStatus === 'success' && (
+            <Badge className="bg-green-100 text-green-700">
+              <CheckCircle className="w-3 h-3 mr-1 inline" /> Connected
+            </Badge>
+          )}
+          {stripeTestStatus === 'error' && (
+            <Badge className="bg-red-100 text-red-700">
+              <XCircle className="w-3 h-3 mr-1 inline" /> Error
+            </Badge>
+          )}
+        </div>
+
+        <p className="text-slate-600 mb-6">
+          Test your Stripe webhook connection and verify payment processing configuration.
+        </p>
+
+        <div className="flex gap-4 items-start">
+          <Button
+            onClick={testStripeWebhook}
+            disabled={stripeTestStatus === 'testing'}
+            variant="outline"
+            className="gap-2"
+          >
+            {stripeTestStatus === 'testing' ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Testing...
+              </>
+            ) : (
+              <>
+                <Zap className="w-4 h-4" />
+                Test Stripe Connection
+              </>
+            )}
+          </Button>
+        </div>
+
+        {stripeTestMessage && (
+          <Card className={`p-4 mt-4 ${
+            stripeTestStatus === 'success' ? 'bg-green-50 border-green-200' :
+            stripeTestStatus === 'error' ? 'bg-red-50 border-red-200' :
+            'bg-blue-50 border-blue-200'
+          }`}>
+            <pre className="text-sm whitespace-pre-wrap font-mono">
+              {stripeTestMessage}
+            </pre>
+          </Card>
+        )}
+
+        {/* Info Card */}
+        <Card className="p-4 bg-purple-50 border-purple-200 mt-6">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="w-5 h-5 text-purple-600 mt-0.5" />
+            <div className="text-sm text-slate-700">
+              <p className="font-semibold mb-2">Stripe Configuration:</p>
+              <ul className="list-disc list-inside space-y-1">
+                <li>Webhook endpoint: <code className="bg-white px-2 py-0.5 rounded">https://eyes-ai-crm.vercel.app/api/webhooks/stripe</code></li>
+                <li>Configure your Stripe API keys and webhook secret in Vercel environment variables</li>
+                <li>Required events: checkout.session.completed, customer.subscription.created/updated/deleted</li>
+                <li>See VERCEL-STRIPE-SETUP.md for detailed setup instructions</li>
+              </ul>
+            </div>
+          </div>
+        </Card>
       </Card>
 
       {/* Webflow Integration */}
