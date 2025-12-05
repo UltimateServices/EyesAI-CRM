@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, Loader2, ArrowRight, Mail, Calendar, User } from 'lucide-react';
 
-export default function OnboardingSuccessPage() {
+function OnboardingSuccessContent() {
   const searchParams = useSearchParams();
   const sessionId = searchParams.get('session_id');
   const companyId = searchParams.get('company_id');
@@ -141,5 +141,17 @@ export default function OnboardingSuccessPage() {
         </p>
       </Card>
     </div>
+  );
+}
+
+export default function OnboardingSuccessPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-green-600" />
+      </div>
+    }>
+      <OnboardingSuccessContent />
+    </Suspense>
   );
 }
