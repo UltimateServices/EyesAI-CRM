@@ -864,6 +864,26 @@ export async function POST(request: NextRequest) {
     console.log('✅ Company database updated:', updatedCompany);
     console.log(`\n✨ Full sync complete for ${hero.business_name || company.name}!`);
 
+    // ============================================
+    // STEP 10: Send "Profile is Live" email via Klaviyo
+    // ============================================
+    const liveUrl = `${WEBFLOW_PREVIEW_DOMAIN}/profile/${slug}`;
+
+    if (company.contact_email) {
+      try {
+        await sendProfileLiveEmail({
+          email: company.contact_email,
+          companyName: hero.business_name || company.name,
+          profileUrl: liveUrl,
+          packageType: company.plan || 'DISCOVER',
+        });
+        console.log('📧 Profile is Live email sent to:', company.contact_email);
+      } catch (emailError) {
+        console.error('❌ Failed to send Profile is Live email:', emailError);
+        // Don't fail the whole operation if email fails
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: `Successfully published ${hero.business_name || company.name} to Webflow`,
@@ -887,5 +907,122 @@ export async function POST(request: NextRequest) {
       { error: error instanceof Error ? error.message : 'Failed to publish company' },
       { status: 500 }
     );
+  }
+}
+
+// ============================================
+// Helper: Send "Profile is Live" email via Klaviyo
+// ============================================
+interface ProfileLiveEmailData {
+  email: string;
+  companyName: string;
+  profileUrl: string;
+  packageType: string;
+}
+
+async function sendProfileLiveEmail(data: ProfileLiveEmailData): Promise<boolean> {
+  try {
+    const KLAVIYO_PRIVATE_API_KEY = process.env.KLAVIYO_API_KEY;
+
+    if (!KLAVIYO_PRIVATE_API_KEY) {
+      console.error('KLAVIYO_API_KEY not configured - skipping email');
+      return false;
+    }
+
+    console.log('📧 Sending Profile is Live email via Klaviyo...');
+    console.log('  Recipient:', data.email);
+    console.log('  Company:', data.companyName);
+
+    // Step 1: Create or update profile in Klaviyo
+    const profileResponse = await fetch('https://a.klaviyo.com/api/profiles/', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Klaviyo-API-Key ${KLAVIYO_PRIVATE_API_KEY}`,
+        'Content-Type': 'application/json',
+        'revision': '2024-10-15',
+      },
+      body: JSON.stringify({
+        data: {
+          type: 'profile',
+          attributes: {
+            email: data.email,
+            properties: {
+              company_name: data.companyName,
+              package_type: data.packageType,
+            },
+          },
+        },
+      }),
+    });
+
+    let profileId: string;
+
+    if (!profileResponse.ok) {
+      const errorData = await profileResponse.json();
+
+      // Handle duplicate profile (409 error)
+      if (profileResponse.status === 409 && errorData.errors?.[0]?.code === 'duplicate_profile') {
+        profileId = errorData.errors[0].meta.duplicate_profile_id;
+        console.log('Using existing Klaviyo profile:', profileId);
+      } else {
+        console.error('Klaviyo profile error:', errorData);
+        return false;
+      }
+    } else {
+      const profileData = await profileResponse.json();
+      profileId = profileData.data.id;
+      console.log('Klaviyo profile created:', profileId);
+    }
+
+    // Step 2: Trigger "Profile is Live" event
+    const eventResponse = await fetch('https://a.klaviyo.com/api/events/', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Klaviyo-API-Key ${KLAVIYO_PRIVATE_API_KEY}`,
+        'Content-Type': 'application/json',
+        'revision': '2024-10-15',
+      },
+      body: JSON.stringify({
+        data: {
+          type: 'event',
+          attributes: {
+            profile: {
+              data: {
+                type: 'profile',
+                id: profileId,
+              },
+            },
+            metric: {
+              data: {
+                type: 'metric',
+                attributes: {
+                  name: 'Profile is Live',
+                },
+              },
+            },
+            properties: {
+              company_name: data.companyName,
+              profile_url: data.profileUrl,
+              package_type: data.packageType,
+            },
+            time: new Date().toISOString(),
+          },
+        },
+      }),
+    });
+
+    if (!eventResponse.ok) {
+      const errorText = await eventResponse.text();
+      console.error('Klaviyo event error:', errorText);
+      return false;
+    }
+
+    console.log('Klaviyo event triggered: Profile is Live');
+    console.log('Email will be sent via Klaviyo flow');
+
+    return true;
+  } catch (error) {
+    console.error('Error sending Profile is Live email:', error);
+    return false;
   }
 }

@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 
+// CORS headers for Webflow integration
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+// Handle CORS preflight requests
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: corsHeaders });
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -18,7 +30,7 @@ export async function POST(req: NextRequest) {
     if (!plan) {
       return NextResponse.json(
         { error: 'Plan is required' },
-        { status: 400 }
+        { status: 400, headers: corsHeaders }
       );
     }
 
@@ -27,13 +39,11 @@ export async function POST(req: NextRequest) {
     if (!stripeSecretKey) {
       return NextResponse.json(
         { error: 'Stripe not configured' },
-        { status: 500 }
+        { status: 500, headers: corsHeaders }
       );
     }
 
-    const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: '2024-11-20.acacia',
-    });
+    const stripe = new Stripe(stripeSecretKey);
 
     // Determine price ID based on plan
     const planLower = plan.toLowerCase();
@@ -45,7 +55,7 @@ export async function POST(req: NextRequest) {
     if (!priceId) {
       return NextResponse.json(
         { error: `Price not configured for plan: ${plan}` },
-        { status: 500 }
+        { status: 500, headers: corsHeaders }
       );
     }
 
@@ -91,13 +101,13 @@ export async function POST(req: NextRequest) {
       success: true,
       checkoutUrl: checkoutSession.url,
       sessionId: checkoutSession.id,
-    });
+    }, { headers: corsHeaders });
 
   } catch (error: any) {
     console.error('Create checkout error:', error);
     return NextResponse.json(
       { error: error.message || 'Failed to create checkout session' },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }

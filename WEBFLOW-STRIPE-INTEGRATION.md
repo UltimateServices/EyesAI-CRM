@@ -65,6 +65,8 @@ Uses custom JavaScript to submit form and redirect immediately to Stripe checkou
 4. Create a "Check Your Email" page in Webflow
 
 ### Klaviyo Setup for Option A:
+
+### Email 1: Checkout Link Requested
 1. Create a new Flow triggered by **"Checkout Link Requested"** event
 2. Add an email action with template containing `{{ event.checkout_url }}`
 3. Available variables:
@@ -73,6 +75,15 @@ Uses custom JavaScript to submit form and redirect immediately to Stripe checkou
    - `{{ event.plan_name }}`
    - `{{ event.plan_price }}`
    - `{{ event.expires_in }}`
+
+### Email 2: Profile is Live
+1. Create a new Flow triggered by **"Profile is Live"** event
+2. Add an email action with template containing `{{ event.profile_url }}`
+3. Available variables:
+   - `{{ event.company_name }}`
+   - `{{ event.profile_url }}`
+   - `{{ event.package_type }}`
+4. This email is sent automatically when the VA publishes the profile to Webflow (Step 5 of onboarding)
 
 ---
 
@@ -345,6 +356,34 @@ curl -X POST https://eyes-ai-crm.vercel.app/api/webflow/onboarding-submission \
 Use the `checkoutUrl` returned from the API to complete a test checkout with Stripe test cards:
 - Success: `4242 4242 4242 4242`
 - Decline: `4000 0000 0000 0002`
+
+## Testing the Integration
+
+### Test Klaviyo Email Triggers
+
+```bash
+# Test both email flows
+node test-klaviyo-emails.js all your-email@example.com
+
+# Test checkout email only
+node test-klaviyo-emails.js checkout your-email@example.com
+
+# Test profile live email only
+node test-klaviyo-emails.js profile-live your-email@example.com
+```
+
+### Test Complete Onboarding Flow
+
+```bash
+# Run full onboarding simulation
+node test-onboarding-flow.js
+```
+
+This will test:
+1. Webflow form submission
+2. Company creation
+3. Checkout email trigger
+4. Profile is Live email trigger
 
 ## Troubleshooting
 
