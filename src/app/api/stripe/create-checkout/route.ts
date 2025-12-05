@@ -21,10 +21,15 @@ export async function POST(req: NextRequest) {
       plan, // 'discover' or 'verified'
       companyId,
       companyName,
+      company_name, // Support both camelCase and snake_case from Webflow
       email,
+      website_url,
       successUrl,
       cancelUrl,
     } = body;
+
+    // Support both naming conventions
+    const finalCompanyName = companyName || company_name || '';
 
     // Validate required fields
     if (!plan) {
@@ -78,9 +83,10 @@ export async function POST(req: NextRequest) {
       cancel_url: finalCancelUrl,
       metadata: {
         company_id: companyId || '',
-        company_name: companyName || '',
+        company_name: finalCompanyName,
+        website_url: website_url || '',
         plan: isVerifiedPlan ? 'VERIFIED' : 'DISCOVER',
-        source: 'api',
+        source: 'webflow',
       },
       subscription_data: {
         metadata: {
