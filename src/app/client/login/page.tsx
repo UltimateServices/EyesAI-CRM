@@ -21,10 +21,9 @@ export default function ClientLoginPage() {
     try {
       const result = await signIn(email, password);
       console.log('Login successful:', result);
-      // Give the session more time to fully establish and sync
-      await new Promise(resolve => setTimeout(resolve, 500));
       console.log('Redirecting to dashboard');
-      router.push('/client/dashboard');
+      // Use window.location for full page reload to ensure session is loaded
+      window.location.href = '/client/dashboard';
     } catch (err: any) {
       console.error('Login error:', err);
       setError(err.message || 'Invalid email or password');

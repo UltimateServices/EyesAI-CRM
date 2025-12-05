@@ -20,7 +20,7 @@ import { CompanyOverview } from '@/components/company/company-overview';
 import { IntakeForm } from '@/components/company/intake-form';
 import MediaGallery from '@/components/company/media-gallery';
 import { Reviews } from '@/components/company/reviews';
-import { MonthlyDeliverables } from '@/components/company/monthly-deliverables';
+import { DeliverablesList } from '@/components/deliverables/DeliverablesList';
 import BlogBuilder from '@/components/company/blog-builder';
 import {
   ArrowLeft,
@@ -53,7 +53,15 @@ export default function CompanyDetailPage() {
   const initializeOrganization = useStore((state) => state.initializeOrganization);
 
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('overview');
+
+  // Get tab from URL params, default to deliverables if specified
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.get('tab') || 'overview';
+    }
+    return 'overview';
+  });
   const [deleting, setDeleting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [migrating, setMigrating] = useState(false);
@@ -535,7 +543,13 @@ export default function CompanyDetailPage() {
         </TabsContent>
 
         <TabsContent value="deliverables" className="mt-6">
-          <MonthlyDeliverables company={company} />
+          <DeliverablesList
+            companyId={company.id}
+            packageType={company.plan?.toLowerCase() === 'verified' || company.plan?.toLowerCase() === 'premium' ? 'verified' : 'discover'}
+            companyName={company.name}
+            companyLogo={company.logoUrl}
+            profileSlug={company.webflowSlug}
+          />
         </TabsContent>
 
         <TabsContent value="blog-builder" className="mt-6">

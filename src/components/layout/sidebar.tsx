@@ -2,11 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Building2, CheckSquare, FileText, Settings } from 'lucide-react';
+import { LayoutDashboard, Building2, CheckSquare, FileText, Settings, UserPlus, Users, BadgeCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/new-clients', label: 'New Clients', icon: UserPlus },
+  { href: '/discover-clients', label: 'Discover Clients', icon: Users },
+  { href: '/verified-clients', label: 'Verified Clients', icon: BadgeCheck },
   { href: '/companies', label: 'Companies', icon: Building2 },
   { href: '/tasks', label: 'Tasks', icon: CheckSquare },
   { href: '/reports', label: 'Reports', icon: FileText },

@@ -59,6 +59,14 @@ export interface Company {
   webflowSlug?: string;
   lastSyncedAt?: string;
 
+  // Onboarding
+  video_script?: {
+    scene1?: string;
+    scene2?: string;
+    scene3?: string;
+    scene4?: string;
+  };
+
   // Timestamps
   createdAt?: string;
   updatedAt?: string;

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import {
   Crown,
   ExternalLink,
@@ -18,9 +17,10 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useTheme } from '../ThemeContext';
+import { useCompany } from '../CompanyContext';
 
 export default function ClientDashboard() {
-  const [user, setUser] = useState<any>(null);
+  const { company } = useCompany();
   const [showEyesAILogo, setShowEyesAILogo] = useState(true);
   const [hoveredPlanFeature, setHoveredPlanFeature] = useState<number | null>(null);
   const [hoveredProfileFeature, setHoveredProfileFeature] = useState<number | null>(null);
@@ -28,16 +28,6 @@ export default function ClientDashboard() {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
   const webflowDomain = process.env.NEXT_PUBLIC_WEBFLOW_DOMAIN || 'http://eyesai.webflow.io';
-
-  useEffect(() => {
-    const getUser = async () => {
-      // Initialize Supabase client inside the effect to avoid build-time errors
-      const supabase = createClientComponentClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
-    };
-    getUser();
-  }, []);
 
   // Alternate logos every 2 seconds
   useEffect(() => {
@@ -125,8 +115,19 @@ export default function ClientDashboard() {
     },
   ];
 
-  // Change this to 'Verified' to test the Verified plan view
-  const planName = 'Verified';
+  // Show loading if company data hasn't loaded yet
+  if (!company) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <RefreshCw className={`w-8 h-8 animate-spin mx-auto mb-2 ${isDark ? 'text-white' : 'text-slate-600'}`} />
+          <p className={isDark ? 'text-white/60' : 'text-slate-600'}>Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const planName = company.plan || 'Discover';
 
   const currentPlan = {
     name: planName,
@@ -153,7 +154,7 @@ export default function ClientDashboard() {
       {/* Welcome Header */}
       <div className="mb-8">
         <h1 className={`text-2xl lg:text-3xl font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-          Welcome back, Major Dumpsters
+          Welcome back, {company.name}
         </h1>
         <p className={`mt-1 ${isDark ? 'text-white/50' : 'text-slate-500'}`}>Here's an overview of your AI presence.</p>
       </div>
@@ -302,26 +303,34 @@ export default function ClientDashboard() {
 
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-lg shadow-emerald-500/30 p-1 relative overflow-hidden flex-shrink-0">
-              <img
-                src="/major-dumpsters-logo.png"
-                alt="Major Dumpsters"
-                className={`absolute inset-0 w-full h-full object-contain p-1 transition-opacity duration-500 ${
-                  showEyesAILogo ? 'opacity-0' : 'opacity-100'
-                }`}
-              />
-              <img
-                src="/logo.png"
-                alt="EyesAI"
-                className={`absolute inset-0 w-full h-full object-contain p-1 transition-opacity duration-500 ${
-                  showEyesAILogo ? 'opacity-100' : 'opacity-0'
-                }`}
-              />
+              {company.logo_url ? (
+                <>
+                  <img
+                    src={company.logo_url}
+                    alt={company.name}
+                    className={`absolute inset-0 w-full h-full object-contain p-1 transition-opacity duration-500 ${
+                      showEyesAILogo ? 'opacity-0' : 'opacity-100'
+                    }`}
+                  />
+                  <img
+                    src="/logo.png"
+                    alt="EyesAI"
+                    className={`absolute inset-0 w-full h-full object-contain p-1 transition-opacity duration-500 ${
+                      showEyesAILogo ? 'opacity-100' : 'opacity-0'
+                    }`}
+                  />
+                </>
+              ) : (
+                <div className={`w-full h-full rounded-xl flex items-center justify-center text-lg font-bold ${isDark ? 'bg-emerald-500 text-white' : 'bg-emerald-600 text-white'}`}>
+                  {company.name?.charAt(0) || '?'}
+                </div>
+              )}
             </div>
-            <span className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>Major Dumpsters</span>
+            <span className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{company.name}</span>
           </div>
 
           <a
-            href="https://eyesai.webflow.io/profile"
+            href={company.webflow_slug ? `${webflowDomain}/profile/${company.webflow_slug}` : `${webflowDomain}/profile/${company.profile_slug || ''}`}
             target="_blank"
             rel="noopener noreferrer"
             className="w-full py-3 bg-gradient-to-b from-emerald-400 via-emerald-500 to-emerald-600 text-white text-sm font-medium rounded-xl hover:shadow-lg hover:shadow-emerald-500/30 transition-all flex items-center justify-center gap-2 border-t border-white/20 mb-4"
@@ -332,7 +341,7 @@ export default function ClientDashboard() {
 
           <div className={`flex items-center gap-2 text-sm mb-6 ${isDark ? 'text-white/50' : 'text-slate-500'}`}>
             <ExternalLink className="w-4 h-4" />
-            <span>{webflowDomain.replace(/^https?:\/\//, '')}/profile/your-company</span>
+            <span>{webflowDomain.replace(/^https?:\/\//, '')}/profile/{company.webflow_slug || company.profile_slug || company.name.toLowerCase().replace(/\s+/g, '-')}</span>
           </div>
 
           <div className={`pt-4 border-t ${isDark ? 'border-white/10' : 'border-emerald-200/50'}`}>

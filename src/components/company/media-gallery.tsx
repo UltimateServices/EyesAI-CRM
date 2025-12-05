@@ -28,6 +28,8 @@ import {
 
 interface MediaGalleryProps {
   company: Company;
+  filterCategory?: string; // Optional: pre-filter to specific category
+  hideNonMatchingCategories?: boolean; // Optional: hide upload options for other categories
 }
 
 interface MediaItem {
@@ -38,7 +40,7 @@ interface MediaItem {
   file_type: 'image' | 'video' | 'document';
   file_size: number;
   mime_type?: string;
-  category: 'logo' | 'photo' | 'video';
+  category: 'logo' | 'photo' | 'video' | 'eyes-content';
   internal_tags: string[];
   status: 'pending' | 'active' | 'inactive';
   uploaded_by_type: 'worker' | 'client';
@@ -54,6 +56,7 @@ const INTERNAL_CATEGORIES = [
   { id: 'business-interior', label: 'Business Interior', color: 'bg-amber-500', desc: 'Dining room, gym, office, treatment rooms' },
   { id: 'team-people', label: 'Team / People', color: 'bg-blue-500', desc: 'Employees, instructors, owners, staff' },
   { id: 'reviews', label: 'Reviews', color: 'bg-pink-500', desc: 'Review screenshots, testimonials' },
+  { id: 'eyes-content', label: 'Eyes Content', color: 'bg-cyan-500', desc: 'EyesAI profile content for welcome videos (internal only)' },
 ];
 
 // Toast Component
@@ -80,17 +83,17 @@ function Toast({ message, type, onClose }: { message: string; type: 'success' | 
   );
 }
 
-export default function MediaGallery({ company }: MediaGalleryProps) {
+export default function MediaGallery({ company, filterCategory, hideNonMatchingCategories }: MediaGalleryProps) {
   const fetchCompanies = useStore((state) => state.fetchCompanies);
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
-  // Filters
+  // Filters - if filterCategory prop is provided, use it as initial value
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'active' | 'inactive'>('all');
   const [sourceFilter, setSourceFilter] = useState<'all' | 'client' | 'worker'>('all');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>(filterCategory || 'all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   // Lightbox
@@ -219,14 +222,11 @@ export default function MediaGallery({ company }: MediaGalleryProps) {
 
         setSelectedItem(null);
 
-        // Refresh company data and page if it's a logo to show the updated logo in header
+        // Refresh company data if it's a logo to show the updated logo in header
         if (isLogoCategory) {
           console.log('Fetching updated companies...');
           await fetchCompanies();
-          setTimeout(() => {
-            console.log('Reloading page to show new logo...');
-            window.location.reload();
-          }, 1500);
+          // Don't reload the page - let users stay in the modal
         }
       } else {
         const error = await response.json();
@@ -332,47 +332,6 @@ export default function MediaGallery({ company }: MediaGalleryProps) {
           </Button>
         </div>
       )}
-
-      {/* Upload Section */}
-      <Card className="p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Upload className="w-5 h-5 text-blue-600" />
-          <h3 className="text-lg font-semibold text-slate-900">Upload Media</h3>
-        </div>
-
-        <div
-          onDrop={handleDrop}
-          onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-          onDragLeave={() => setIsDragging(false)}
-          className={`border-2 border-dashed rounded-xl p-8 text-center transition-all ${
-            isDragging ? 'border-blue-500 bg-blue-50' : 'border-slate-300 hover:border-slate-400'
-          }`}
-        >
-          {uploading ? (
-            <div className="flex flex-col items-center gap-3">
-              <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
-              <p className="font-medium text-slate-700">Uploading...</p>
-            </div>
-          ) : (
-            <>
-              <Upload className="w-10 h-10 text-slate-400 mx-auto mb-3" />
-              <p className="font-medium text-slate-700 mb-1">Drop files here or click to upload</p>
-              <p className="text-sm text-slate-500 mb-4">Images and videos up to 50MB</p>
-              <input
-                type="file"
-                multiple
-                accept="image/*,video/*"
-                onChange={handleFileSelect}
-                className="hidden"
-                id="media-upload"
-              />
-              <Button asChild variant="outline">
-                <label htmlFor="media-upload" className="cursor-pointer">Browse Files</label>
-              </Button>
-            </>
-          )}
-        </div>
-      </Card>
 
       {/* Media Gallery */}
       <Card className="p-6">
@@ -532,11 +491,12 @@ export default function MediaGallery({ company }: MediaGalleryProps) {
 
                 {/* Status Badge - with blinking for active */}
                 <div className={`absolute top-1.5 left-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                  item.internal_tags?.includes('eyes-content') ? 'bg-cyan-500 text-white' :
                   item.status === 'pending' ? 'bg-amber-500 text-white' :
                   item.status === 'active' ? 'bg-emerald-500 text-white animate-pulse' :
                   'bg-slate-400 text-white'
                 }`}>
-                  {item.status}
+                  {item.internal_tags?.includes('eyes-content') ? 'Eyes Content' : item.status}
                 </div>
 
                 {/* Source Badge - Only show C for client uploads */}
@@ -596,6 +556,47 @@ export default function MediaGallery({ company }: MediaGalleryProps) {
             ))}
           </div>
         )}
+      </Card>
+
+      {/* Upload Section */}
+      <Card className="p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Upload className="w-5 h-5 text-blue-600" />
+          <h3 className="text-lg font-semibold text-slate-900">Upload Media</h3>
+        </div>
+
+        <div
+          onDrop={handleDrop}
+          onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+          onDragLeave={() => setIsDragging(false)}
+          className={`border-2 border-dashed rounded-xl p-8 text-center transition-all ${
+            isDragging ? 'border-blue-500 bg-blue-50' : 'border-slate-300 hover:border-slate-400'
+          }`}
+        >
+          {uploading ? (
+            <div className="flex flex-col items-center gap-3">
+              <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+              <p className="font-medium text-slate-700">Uploading...</p>
+            </div>
+          ) : (
+            <>
+              <Upload className="w-10 h-10 text-slate-400 mx-auto mb-3" />
+              <p className="font-medium text-slate-700 mb-1">Drop files here or click to upload</p>
+              <p className="text-sm text-slate-500 mb-4">Images and videos up to 50MB</p>
+              <input
+                type="file"
+                multiple
+                accept="image/*,video/*"
+                onChange={handleFileSelect}
+                className="hidden"
+                id="media-upload"
+              />
+              <Button asChild variant="outline">
+                <label htmlFor="media-upload" className="cursor-pointer">Browse Files</label>
+              </Button>
+            </>
+          )}
+        </div>
       </Card>
 
       {/* Lightbox / Detail Modal */}

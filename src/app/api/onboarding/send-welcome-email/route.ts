@@ -57,10 +57,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Company not found' }, { status: 404 });
     }
 
-    // Create Supabase auth user for the client (if not already created)
+    // Create or update Supabase auth user for the client
     let clientUserId = company.client_user_id;
 
-    if (!clientUserId) {
+    // Always update the password to match what's in the email
+    if (clientUserId) {
+      // User already exists - update their password to match the temp password
+      console.log('✅ Client user already exists:', clientUserId);
+      console.log('🔄 Updating password to match temp password:', emailData.tempPassword);
+
+      try {
+        const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+          clientUserId,
+          { password: emailData.tempPassword }
+        );
+
+        if (updateError) {
+          console.error('❌ Error updating user password:', updateError);
+        } else {
+          console.log('✅ Successfully updated user password');
+        }
+      } catch (err) {
+        console.error('Exception updating password:', err);
+      }
+    } else if (!clientUserId) {
       try {
         const { data: authData, error: createUserError } = await supabaseAdmin.auth.admin.createUser({
           email: emailData.clientEmail,
@@ -75,6 +95,49 @@ export async function POST(req: NextRequest) {
 
         if (createUserError) {
           console.error('Error creating client user:', createUserError);
+
+          // If user already exists, update their password to match the email
+          // Check for error code 'email_exists' or status 422
+          if (createUserError.code === 'email_exists' || createUserError.status === 422) {
+            console.log('🔄 User already exists, updating password...');
+            try {
+              // Get existing user by email
+              const { data: usersData, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+
+              if (listError) {
+                console.error('Error listing users:', listError);
+              } else {
+                const existingUser = usersData.users.find(u => u.email === emailData.clientEmail);
+
+                if (existingUser) {
+                  console.log('✅ Found existing user:', existingUser.id);
+
+                  // Update password to match what's in the email
+                  const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+                    existingUser.id,
+                    { password: emailData.tempPassword }
+                  );
+
+                  if (updateError) {
+                    console.error('❌ Error updating user password:', updateError);
+                  } else {
+                    console.log('✅ Successfully updated user password to:', emailData.tempPassword);
+                    clientUserId = existingUser.id;
+
+                    // Store client_user_id
+                    await supabase
+                      .from('companies')
+                      .update({ client_user_id: clientUserId })
+                      .eq('id', companyId);
+
+                    console.log('✅ Stored client_user_id in companies table');
+                  }
+                }
+              }
+            } catch (updateErr) {
+              console.error('Exception updating user password:', updateErr);
+            }
+          }
         } else {
           clientUserId = authData.user.id;
 
@@ -95,6 +158,12 @@ export async function POST(req: NextRequest) {
     if (!emailSent) {
       throw new Error('Failed to send welcome email');
     }
+
+    // Update welcome_email_sent_at timestamp
+    await supabase
+      .from('companies')
+      .update({ welcome_email_sent_at: new Date().toISOString() })
+      .eq('id', companyId);
 
     return NextResponse.json({
       success: true,

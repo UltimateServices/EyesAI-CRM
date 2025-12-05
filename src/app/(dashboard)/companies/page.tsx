@@ -17,6 +17,7 @@ import {
   ExternalLink,
   Loader2,
   Upload,
+  Trash2,
 } from 'lucide-react';
 import Link from 'next/link';
 import { format } from 'date-fns';
@@ -105,6 +106,35 @@ export default function CompaniesPage() {
       console.error('Sync error:', error);
     } finally {
       setPublishing(null);
+    }
+  };
+
+  const handleDeleteCompany = async (companyId: string, companyName: string, e: React.MouseEvent) => {
+    e.preventDefault(); // Prevent navigation to company detail page
+    e.stopPropagation();
+
+    const confirmed = confirm(`Are you sure you want to permanently delete "${companyName}" and all related data (steps, intakes, reviews, media)? This cannot be undone.`);
+
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch(`/api/companies/${companyId}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete company');
+      }
+
+      alert(`✅ ${data.message}`);
+
+      // Refresh companies list
+      await fetchCompanies();
+    } catch (error: any) {
+      alert(`❌ Error: ${error.message}`);
+      console.error('Delete error:', error);
     }
   };
 
@@ -245,6 +275,15 @@ export default function CompaniesPage() {
                               Sync
                             </>
                           )}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={(e) => handleDeleteCompany(company.id, company.name, e)}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          title="Delete company"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                       </div>
                     </div>

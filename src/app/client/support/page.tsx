@@ -3,9 +3,11 @@
 import { useState } from 'react';
 import { MessageSquare, Plus, Search, Clock, CheckCircle2, ChevronRight, Send, Paperclip, X } from 'lucide-react';
 import { useTheme } from '../ThemeContext';
+import { useCompany } from '../CompanyContext';
 import ChatWidget from '@/components/chat/ChatWidget';
 
 export default function SupportPage() {
+  const { company } = useCompany();
   const [showNewTicket, setShowNewTicket] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<number | null>(null);
   const { theme } = useTheme();
@@ -39,13 +41,21 @@ export default function SupportPage() {
     );
   };
 
+  if (!company) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p className={isDark ? 'text-white/60' : 'text-slate-600'}>Loading...</p>
+      </div>
+    );
+  }
+
   return (
     <>
       <ChatWidget
         source="client_portal"
-        companyId="60db5fa2-424a-4a07-91de-963271a4ea31"
-        visitorName="Major Dumpsters"
-        visitorEmail="hello@majordumpsters.com"
+        companyId={company.id}
+        visitorName={company.name}
+        visitorEmail={company.email}
       />
       <div className="p-6 lg:p-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">

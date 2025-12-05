@@ -6,9 +6,15 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { StripeInfoModal } from '@/components/onboarding/stripe-info-modal';
 import { PasteIntakeModal } from '@/components/onboarding/paste-intake-modal';
 import { ReviewsModal } from '@/components/onboarding/reviews-modal';
 import { MediaModal } from '@/components/onboarding/media-modal';
+import { PublishWebflowModal } from '@/components/onboarding/publish-webflow-modal';
+import { VideoUploadModal } from '@/components/onboarding/video-upload-modal';
+import { ScreenshotsModal } from '@/components/onboarding/screenshots-modal';
+import { VideoScriptModal } from '@/components/onboarding/video-script-modal';
+import { WelcomeEmailModal } from '@/components/onboarding/welcome-email-modal';
 import {
   CheckCircle,
   Plus,
@@ -26,7 +32,10 @@ import {
   Circle,
   CheckCircle2,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Trash2,
+  Eye,
+  X
 } from 'lucide-react';
 
 interface OnboardingStep {
@@ -53,9 +62,16 @@ export default function NewClientsPage() {
   const [companySteps, setCompanySteps] = useState<CompanySteps>({});
   const [processingSteps, setProcessingSteps] = useState<{ [key: string]: boolean }>({});
   const [expandedCompanies, setExpandedCompanies] = useState<{ [key: string]: boolean }>({});
+  const [stripeInfoModalCompany, setStripeInfoModalCompany] = useState<{ id: string; name: string } | null>(null);
   const [pasteModalCompany, setPasteModalCompany] = useState<{ id: string; name: string } | null>(null);
   const [reviewsModalCompany, setReviewsModalCompany] = useState<{ id: string; name: string } | null>(null);
   const [mediaModalCompany, setMediaModalCompany] = useState<{ id: string; name: string } | null>(null);
+  const [publishModalCompany, setPublishModalCompany] = useState<{ id: string; name: string } | null>(null);
+  const [screenshotsModalCompany, setScreenshotsModalCompany] = useState<{ id: string; name: string; profileUrl?: string } | null>(null);
+  const [videoScriptModalCompany, setVideoScriptModalCompany] = useState<{ id: string; name: string } | null>(null);
+  const [videoModalCompany, setVideoModalCompany] = useState<{ id: string; name: string } | null>(null);
+  const [welcomeEmailModalCompany, setWelcomeEmailModalCompany] = useState<{ id: string; name: string } | null>(null);
+  const [viewJsonModal, setViewJsonModal] = useState<{ companyId: string; companyName: string; json: any } | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     website: '',
@@ -116,14 +132,14 @@ export default function NewClientsPage() {
 
   const mapStepsToUI = (dbSteps: any[]): OnboardingStep[] => {
     const stepConfig = [
-      { id: 1, title: 'Stripe Signup', description: 'Company created from Stripe payment', icon: CheckCircle2, action: 'completed' },
-      { id: 2, title: 'Paste Intake JSON', description: 'Paste ROMA JSON and verify all fields/sections are complete', icon: Bot, action: 'Paste Intake' },
+      { id: 1, title: 'Stripe Signup', description: 'Company created from Stripe payment', icon: CheckCircle2, action: 'View Details' },
+      { id: 2, title: 'Paste Intake JSON', description: 'Paste Claude Agent JSON and verify all fields/sections are complete', icon: Bot, action: 'Paste Intake' },
       { id: 3, title: 'Reviews', description: 'Verify 5 valid reviews are present', icon: Star, action: 'Manage Reviews' },
       { id: 4, title: 'Logo & Media Library', description: 'Verify 1 logo and 5 gallery images are uploaded', icon: Upload, action: 'Manage Media' },
       { id: 5, title: 'Publish Profile', description: 'Make profile live on website', icon: Globe, action: 'Publish' },
       { id: 6, title: 'Screenshot Profile', description: 'Take screenshots of live profile', icon: Camera, action: 'Take Screenshots' },
-      { id: 7, title: 'Video Script', description: 'Generate welcome video script', icon: FileText, action: 'Get Script' },
-      { id: 8, title: 'Create Video', description: 'Make and download HeyGen video', icon: Video, action: 'Open HeyGen' },
+      { id: 7, title: 'Video Creation', description: 'Generate script, open HeyGen onboard template, fix images, paste script, start generation', icon: FileText, action: 'Get Script' },
+      { id: 8, title: 'Upload Welcome Video', description: 'Download completed video from HeyGen and upload to CRM storage', icon: Video, action: 'Upload Video' },
       { id: 9, title: 'Welcome Email', description: 'Send welcome email → Move to Discover/Verified', icon: Mail, action: 'Send Email' },
     ];
 
@@ -195,6 +211,9 @@ export default function NewClientsPage() {
     try {
       // Handle different step actions
       switch (stepNumber) {
+        case 1: // Stripe Checkout
+          await handleStripeInfo(companyId);
+          break;
         case 2: // AI Intake
           await handleAIIntake(companyId);
           break;
@@ -251,6 +270,17 @@ export default function NewClientsPage() {
   };
 
   // Step action handlers
+  const handleStripeInfo = async (companyId: string) => {
+    // Find company to get its name
+    const company = companies.find(c => c.id === companyId);
+    if (!company) {
+      throw new Error('Company not found');
+    }
+
+    // Open stripe info modal
+    setStripeInfoModalCompany({ id: companyId, name: company.name });
+  };
+
   const handleAIIntake = async (companyId: string) => {
     // Find company to get its name
     const company = companies.find(c => c.id === companyId);
@@ -285,107 +315,151 @@ export default function NewClientsPage() {
   };
 
   const handlePublishProfile = async (companyId: string) => {
-    // Use existing publish endpoint
-    const response = await fetch('/api/webflow/publish-company', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ companyId }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to publish profile');
+    // Find company to get its name
+    const company = companies.find(c => c.id === companyId);
+    if (!company) {
+      throw new Error('Company not found');
     }
 
-    // Mark step as complete
-    await fetch(`/api/onboarding/steps/${companyId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ step_number: 5, completed: true }),
-    });
-
-    alert('✅ Profile published to Webflow successfully!');
+    // Open publish modal
+    setPublishModalCompany({ id: companyId, name: company.name });
   };
 
   const handleScreenshotProfile = async (companyId: string) => {
-    // Manual completion for taking screenshots
-    const confirmed = confirm('Have you taken screenshots of the live profile? Click OK to mark as complete.');
-
-    if (!confirmed) return;
-
-    const response = await fetch(`/api/onboarding/steps/${companyId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ step_number: 6, completed: true }),
-    });
-
-    if (response.ok) {
-      alert('✅ Screenshot step marked as complete!');
-    } else {
-      throw new Error('Failed to update step');
+    // Find company to get its name and profile URL
+    const company = companies.find(c => c.id === companyId);
+    if (!company) {
+      throw new Error('Company not found');
     }
+
+    // Get profile URL from company's webflow_profile_url or construct it
+    const profileUrl = company.webflow_profile_url ||
+      `https://eyesai.webflow.io/profile/${company.slug || company.name.toLowerCase().replace(/\s+/g, '-')}`;
+
+    // Open screenshots modal
+    setScreenshotsModalCompany({
+      id: companyId,
+      name: company.name,
+      profileUrl
+    });
   };
 
   const handleVideoScript = async (companyId: string) => {
-    const response = await fetch('/api/onboarding/video-script', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ companyId }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to generate video script');
+    // Find company to get its name
+    const company = companies.find(c => c.id === companyId);
+    if (!company) {
+      throw new Error('Company not found');
     }
 
-    // Show script in alert (we can make this a modal later)
-    alert(`✅ Video script generated!\n\n${data.script}`);
+    // Open video script modal
+    setVideoScriptModalCompany({ id: companyId, name: company.name });
   };
 
   const handleCreateVideo = async (companyId: string) => {
-    // Open HeyGen in a new tab
-    const heygenUrl = 'https://app.heygen.com';
-    window.open(heygenUrl, '_blank');
-
-    // Mark step as complete after user confirms they created the video
-    const confirmed = confirm('After you create and download the video in HeyGen, click OK to mark this step as complete.');
-
-    if (confirmed) {
-      const response = await fetch(`/api/onboarding/steps/${companyId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ step_number: 8, completed: true }),
-      });
-
-      if (response.ok) {
-        alert('✅ Video creation step marked as complete!');
-      }
+    // Find company to get its name
+    const company = companies.find(c => c.id === companyId);
+    if (!company) {
+      throw new Error('Company not found');
     }
+
+    // Open video upload modal
+    setVideoModalCompany({ id: companyId, name: company.name });
   };
 
   const handleWelcomeEmail = async (companyId: string) => {
-    const confirmed = confirm('This will send the welcome email and move the company to DISCOVER status. Continue?');
+    // Find company to get its name
+    const company = companies.find(c => c.id === companyId);
+    if (!company) {
+      throw new Error('Company not found');
+    }
+
+    // Open welcome email modal
+    setWelcomeEmailModalCompany({ id: companyId, name: company.name });
+  };
+
+  const handleViewJSON = async (companyId: string) => {
+    try {
+      const company = companies.find(c => c.id === companyId);
+      if (!company) {
+        alert('❌ Error: Company not found');
+        return;
+      }
+
+      // Fetch the intake JSON
+      const response = await fetch(`/api/intakes?companyId=${companyId}`);
+
+      if (!response.ok) {
+        const data = await response.json();
+        alert(`❌ Error: ${data.error || 'Failed to fetch intake JSON'}`);
+        return;
+      }
+
+      const data = await response.json();
+
+      if (!data.intake?.roma_data) {
+        alert('No JSON data found for this company.');
+        return;
+      }
+
+      // Ensure JSON is valid
+      const jsonData = typeof data.intake.roma_data === 'string'
+        ? JSON.parse(data.intake.roma_data)
+        : data.intake.roma_data;
+
+      // Reorder JSON to put hero and about first
+      const orderedJson: any = {};
+      const keyOrder = ['hero', 'about', 'faqs', 'services', 'reviews', 'gallery', 'contact', 'metadata'];
+
+      // Add keys in desired order
+      keyOrder.forEach(key => {
+        if (jsonData[key] !== undefined) {
+          orderedJson[key] = jsonData[key];
+        }
+      });
+
+      // Add any remaining keys not in the order list
+      Object.keys(jsonData).forEach(key => {
+        if (!keyOrder.includes(key)) {
+          orderedJson[key] = jsonData[key];
+        }
+      });
+
+      // Open modal with JSON
+      setViewJsonModal({
+        companyId,
+        companyName: company.name,
+        json: orderedJson,
+      });
+    } catch (error: any) {
+      console.error('View JSON error:', error);
+      alert(`❌ Error loading JSON: ${error.message || 'Unknown error'}`);
+    }
+  };
+
+  const handleDeleteCompany = async (companyId: string, companyName: string) => {
+    const confirmed = confirm(`Are you sure you want to permanently delete "${companyName}" and all related data (steps, intakes, reviews, media)? This cannot be undone.`);
 
     if (!confirmed) return;
 
-    const response = await fetch('/api/onboarding/welcome-email', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ companyId }),
-    });
+    try {
+      const response = await fetch(`/api/companies/${companyId}`, {
+        method: 'DELETE',
+      });
 
-    const data = await response.json();
+      const data = await response.json();
 
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to send welcome email');
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete company');
+      }
+
+      alert(`✅ ${data.message}`);
+
+      // Refresh companies list
+      await fetchCompanies();
+    } catch (error: any) {
+      alert(`❌ Error: ${error.message}`);
+      console.error('Delete error:', error);
     }
-
-    alert('✅ Welcome email sent! Company moved to DISCOVER status.');
-
-    // Refresh companies to reflect status change
-    await fetchCompanies();
   };
 
   return (
@@ -511,6 +585,15 @@ export default function NewClientsPage() {
                         <Badge variant="secondary" className="bg-slate-100 text-slate-700">
                           {completedSteps}/{steps.length} Complete
                         </Badge>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteCompany(company.id, company.name)}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          title="Delete company"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       </div>
                     </div>
 
@@ -594,12 +677,18 @@ export default function NewClientsPage() {
                             <p className="text-xs text-slate-600 mb-3">
                               {step.description}
                             </p>
-                            {!step.completed && step.action !== 'completed' && (
+                            {(!step.completed || step.id === 1 || step.id === 5 || step.id === 2 || step.id === 6 || step.id === 7 || step.id === 8) && step.action !== 'completed' && (
                               <Button
                                 size="sm"
                                 variant="outline"
                                 className="w-full text-xs"
-                                onClick={() => handleStepAction(company.id, step.id, step.action)}
+                                onClick={() => {
+                                  if (step.completed && step.id === 2) {
+                                    handleViewJSON(company.id);
+                                  } else {
+                                    handleStepAction(company.id, step.id, step.action);
+                                  }
+                                }}
                                 disabled={processingSteps[`${company.id}-${step.id}`]}
                               >
                                 {processingSteps[`${company.id}-${step.id}`] ? (
@@ -607,6 +696,24 @@ export default function NewClientsPage() {
                                     <Loader2 className="w-3 h-3 mr-1 animate-spin" />
                                     Processing...
                                   </>
+                                ) : step.completed && step.id === 1 ? (
+                                  <>
+                                    <Eye className="w-3 h-3 mr-1" />
+                                    View Details
+                                  </>
+                                ) : step.completed && step.id === 5 ? (
+                                  'Re-publish'
+                                ) : step.completed && step.id === 2 ? (
+                                  <>
+                                    <Eye className="w-3 h-3 mr-1" />
+                                    View JSON
+                                  </>
+                                ) : step.completed && step.id === 6 ? (
+                                  'Manage Screenshots'
+                                ) : step.completed && step.id === 7 ? (
+                                  'Manage Script'
+                                ) : step.completed && step.id === 8 ? (
+                                  'Manage Video'
                                 ) : (
                                   step.action
                                 )}
@@ -632,6 +739,19 @@ export default function NewClientsPage() {
           </Card>
         )}
       </div>
+
+      {/* Stripe Info Modal */}
+      {stripeInfoModalCompany && (
+        <StripeInfoModal
+          companyId={stripeInfoModalCompany.id}
+          companyName={stripeInfoModalCompany.name}
+          onClose={() => setStripeInfoModalCompany(null)}
+          onSuccess={async () => {
+            await refreshCompanySteps(stripeInfoModalCompany.id);
+            await fetchCompanies();
+          }}
+        />
+      )}
 
       {/* Paste Intake Modal */}
       {pasteModalCompany && (
@@ -661,6 +781,131 @@ export default function NewClientsPage() {
           onClose={() => setMediaModalCompany(null)}
           onSuccess={() => refreshCompanySteps(mediaModalCompany.id)}
         />
+      )}
+
+      {/* Publish Webflow Modal */}
+      {publishModalCompany && (
+        <PublishWebflowModal
+          companyId={publishModalCompany.id}
+          companyName={publishModalCompany.name}
+          onClose={() => setPublishModalCompany(null)}
+          onSuccess={() => refreshCompanySteps(publishModalCompany.id)}
+        />
+      )}
+
+      {/* Screenshots Modal */}
+      {screenshotsModalCompany && (
+        <ScreenshotsModal
+          companyId={screenshotsModalCompany.id}
+          companyName={screenshotsModalCompany.name}
+          profileUrl={screenshotsModalCompany.profileUrl}
+          onClose={() => setScreenshotsModalCompany(null)}
+          onSuccess={() => refreshCompanySteps(screenshotsModalCompany.id)}
+        />
+      )}
+
+      {/* Video Script Modal */}
+      {videoScriptModalCompany && (
+        <VideoScriptModal
+          companyId={videoScriptModalCompany.id}
+          companyName={videoScriptModalCompany.name}
+          onClose={() => setVideoScriptModalCompany(null)}
+          onSuccess={() => refreshCompanySteps(videoScriptModalCompany.id)}
+        />
+      )}
+
+      {/* Video Upload Modal */}
+      {videoModalCompany && (
+        <VideoUploadModal
+          companyId={videoModalCompany.id}
+          companyName={videoModalCompany.name}
+          onClose={() => setVideoModalCompany(null)}
+          onSuccess={() => refreshCompanySteps(videoModalCompany.id)}
+        />
+      )}
+
+      {/* Welcome Email Modal */}
+      {welcomeEmailModalCompany && (
+        <WelcomeEmailModal
+          companyId={welcomeEmailModalCompany.id}
+          companyName={welcomeEmailModalCompany.name}
+          onClose={() => setWelcomeEmailModalCompany(null)}
+          onSuccess={async () => {
+            await refreshCompanySteps(welcomeEmailModalCompany.id);
+            await fetchCompanies();
+          }}
+        />
+      )}
+
+      {/* View JSON Modal */}
+      {viewJsonModal && viewJsonModal.json && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+          <Card className="w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div className="p-6 border-b border-slate-200 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">
+                  ROMA JSON - {viewJsonModal?.companyName || 'Unknown Company'}
+                </h2>
+                <p className="text-sm text-slate-600 mt-1">
+                  View the pasted intake JSON data
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setViewJsonModal(null)}
+              >
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+
+            <div className="p-6 overflow-auto flex-1">
+              <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg overflow-x-auto text-xs font-mono">
+                {(() => {
+                  try {
+                    return JSON.stringify(viewJsonModal.json, null, 2);
+                  } catch (e) {
+                    return `Error displaying JSON: ${e instanceof Error ? e.message : 'Unknown error'}`;
+                  }
+                })()}
+              </pre>
+            </div>
+
+            <div className="p-6 border-t border-slate-200 flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  try {
+                    const jsonString = JSON.stringify(viewJsonModal.json, null, 2);
+                    await navigator.clipboard.writeText(jsonString);
+                    alert('✅ JSON copied to clipboard!');
+                  } catch (e) {
+                    console.error('Copy failed:', e);
+                    // Fallback: Create a temporary textarea
+                    const textarea = document.createElement('textarea');
+                    textarea.value = JSON.stringify(viewJsonModal.json, null, 2);
+                    textarea.style.position = 'fixed';
+                    textarea.style.opacity = '0';
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    try {
+                      document.execCommand('copy');
+                      alert('✅ JSON copied to clipboard!');
+                    } catch (err) {
+                      alert('❌ Failed to copy JSON');
+                    }
+                    document.body.removeChild(textarea);
+                  }
+                }}
+              >
+                Copy JSON
+              </Button>
+              <Button onClick={() => setViewJsonModal(null)}>
+                Close
+              </Button>
+            </div>
+          </Card>
+        </div>
       )}
     </div>
   );
