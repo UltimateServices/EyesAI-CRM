@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
 
     const companyId = searchParams.get('companyId');
     const category = searchParams.get('category'); // logo, photo, video
+    const excludeEyesContent = searchParams.get('excludeEyesContent') === 'true'; // For client-side filtering
 
     if (!companyId) {
       return NextResponse.json(
@@ -40,7 +41,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ data });
+    // Filter out eyes-content category only for client requests
+    const filteredData = excludeEyesContent
+      ? data?.filter(item =>
+          item.category !== 'eyes-content' && !item.internal_tags?.includes('eyes-content')
+        ) || []
+      : data || [];
+
+    return NextResponse.json({ data: filteredData });
   } catch (error) {
     console.error('Media API error:', error);
     return NextResponse.json(

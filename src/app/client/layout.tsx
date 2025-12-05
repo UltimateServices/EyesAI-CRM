@@ -20,54 +20,23 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ThemeProvider, useTheme } from './ThemeContext';
+import { CompanyProvider, useCompany } from './CompanyContext';
 
 function ClientLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { theme, toggleTheme } = useTheme();
+  const { company, user, loading } = useCompany();
 
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [supabase] = useState(() => createClientComponentClient());
 
   useEffect(() => {
-    let isMounted = true;
-
-    const getUser = async () => {
-      try {
-        const { data: { user }, error } = await supabase.auth.getUser();
-
-        if (!isMounted) return;
-
-        if (error) {
-          console.error('Auth check error:', error);
-          // Don't redirect on error - session might still be valid
-          setLoading(false);
-          return;
-        }
-
-        if (!user && pathname !== '/client/login') {
-          router.push('/client/login');
-        } else if (user) {
-          setUser(user);
-        }
-      } catch (error) {
-        console.error('Auth error:', error);
-        // Don't redirect on exception
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    getUser();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []); // Only run once on mount
+    // Check auth and redirect if not authenticated
+    if (!loading && !user && pathname !== '/client/login') {
+      router.push('/client/login');
+    }
+  }, [loading, user, pathname, router]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -88,13 +57,29 @@ function ClientLayoutContent({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  // Show loading screen while checking auth (only on protected pages)
-  if (loading || !user) {
+  // Show loading screen while checking auth and fetching company data (only on protected pages)
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-white via-sky-50/60 to-sky-100/80">
         <div className="text-center">
           <img src="/logo.png" alt="Eyes AI" className="h-16 mx-auto mb-4 animate-pulse" />
           <p className="text-slate-600">Loading your portal...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error if no company data after loading
+  if (!loading && !company) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-white via-sky-50/60 to-sky-100/80">
+        <div className="text-center max-w-md p-8">
+          <img src="/logo.png" alt="Eyes AI" className="h-16 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-slate-900 mb-2">Unable to Load Company Data</h2>
+          <p className="text-slate-600 mb-4">We couldn't find your company profile. Please contact support.</p>
+          <Button onClick={handleLogout} variant="outline">
+            Sign Out
+          </Button>
         </div>
       </div>
     );
@@ -202,17 +187,23 @@ function ClientLayoutContent({ children }: { children: React.ReactNode }) {
           <div className={`p-4 border-t ${isDark ? 'border-white/5' : 'border-sky-200/30'}`}>
             <div className={`flex items-center gap-3 p-3 rounded-xl mb-3 ${isDark ? 'bg-white/5' : 'bg-white/50 border border-sky-200/20'}`}>
               <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-lg shadow-sky-500/30 p-1.5">
-                <img
-                  src="/major-dumpsters-logo.png"
-                  alt="Major Dumpsters"
-                  className="w-full h-full object-contain"
-                />
+                {company.logo_url ? (
+                  <img
+                    src={company.logo_url}
+                    alt={company.name}
+                    className="w-full h-full object-contain"
+                  />
+                ) : (
+                  <div className={`w-full h-full rounded-full flex items-center justify-center text-xs font-bold ${isDark ? 'bg-sky-500 text-white' : 'bg-sky-600 text-white'}`}>
+                    {company.name?.charAt(0) || '?'}
+                  </div>
+                )}
               </div>
               <div className="flex-1 min-w-0">
                 <p className={`text-sm font-medium truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  Major Dumpsters
+                  {company.name}
                 </p>
-                <p className={`text-xs truncate ${isDark ? 'text-white/40' : 'text-slate-500'}`}>info@majordumpsters.com</p>
+                <p className={`text-xs truncate ${isDark ? 'text-white/40' : 'text-slate-500'}`}>{company.email}</p>
               </div>
             </div>
             <Button
@@ -277,15 +268,21 @@ function ClientLayoutContent({ children }: { children: React.ReactNode }) {
 
               <div className={`hidden sm:flex items-center gap-3 pl-3 border-l ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
                 <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center shadow-md shadow-sky-500/30 p-1">
-                  <img
-                    src="/major-dumpsters-logo.png"
-                    alt="Major Dumpsters"
-                    className="w-full h-full object-contain"
-                  />
+                  {company.logo_url ? (
+                    <img
+                      src={company.logo_url}
+                      alt={company.name}
+                      className="w-full h-full object-contain"
+                    />
+                  ) : (
+                    <div className={`w-full h-full rounded-full flex items-center justify-center text-xs font-bold ${isDark ? 'bg-sky-500 text-white' : 'bg-sky-600 text-white'}`}>
+                      {company.name?.charAt(0) || '?'}
+                    </div>
+                  )}
                 </div>
                 <div className="hidden lg:block">
-                  <p className={`text-sm font-medium ${isDark ? 'text-white' : 'text-slate-900'}`}>Major Dumpsters</p>
-                  <p className={`text-xs ${isDark ? 'text-white/40' : 'text-slate-500'}`}>Discover Plan</p>
+                  <p className={`text-sm font-medium ${isDark ? 'text-white' : 'text-slate-900'}`}>{company.name}</p>
+                  <p className={`text-xs ${isDark ? 'text-white/40' : 'text-slate-500'}`}>{company.plan || 'Discover'} Plan</p>
                 </div>
               </div>
             </div>
@@ -304,7 +301,9 @@ function ClientLayoutContent({ children }: { children: React.ReactNode }) {
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>
-      <ClientLayoutContent>{children}</ClientLayoutContent>
+      <CompanyProvider>
+        <ClientLayoutContent>{children}</ClientLayoutContent>
+      </CompanyProvider>
     </ThemeProvider>
   );
 }

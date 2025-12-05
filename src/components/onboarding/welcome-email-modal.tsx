@@ -44,6 +44,7 @@ export function WelcomeEmailModal({
   const [emailData, setEmailData] = useState<EmailData | null>(null);
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [allChecksPass, setAllChecksPass] = useState(false);
+  const [emailSentAt, setEmailSentAt] = useState<string | null>(null);
 
   // Fetch all data needed for email
   useEffect(() => {
@@ -61,10 +62,34 @@ export function WelcomeEmailModal({
           webflow_published: company.webflow_published,
         });
 
+        // Check if email was sent before
+        if (company.welcome_email_sent_at) {
+          setEmailSentAt(company.welcome_email_sent_at);
+        }
+
         // Fetch intake for owner name
         const intakeRes = await fetch(`/api/intakes?companyId=${companyId}`);
         const { data: intakes } = await intakeRes.json();
         const intake = intakes?.[0];
+
+        // Get or generate temp password (generate once and store permanently)
+        let tempPassword = company.client_temp_password;
+        if (!tempPassword) {
+          // Generate new password and store it
+          tempPassword = generateTempPassword();
+          console.log('Generated new temp password:', tempPassword);
+
+          // Store it in the database
+          await fetch(`/api/companies/${companyId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ client_temp_password: tempPassword }),
+          });
+
+          console.log('✅ Stored temp password in database');
+        } else {
+          console.log('✅ Using existing temp password from database');
+        }
 
         // Build email data
         const slug = company.webflow_slug || company.profile_slug || '';
@@ -82,7 +107,7 @@ export function WelcomeEmailModal({
           packageType: company.plan || 'DISCOVER',
           packagePrice: company.plan === 'DISCOVER' ? '$39' : '$69',
           loginUrl: `${window.location.origin}/client/login`,
-          tempPassword: generateTempPassword(),
+          tempPassword: tempPassword,
         };
 
         setEmailData(data);
@@ -142,6 +167,8 @@ export function WelcomeEmailModal({
         throw new Error(error || 'Failed to send email');
       }
 
+      // Update emailSentAt to show "Resend" button
+      setEmailSentAt(new Date().toISOString());
       alert('✅ Welcome email sent successfully!');
     } catch (error: any) {
       console.error('Send email error:', error);
@@ -336,6 +363,22 @@ export function WelcomeEmailModal({
                 </div>
               </div>
 
+              {/* Email Sent Indicator */}
+              {emailSentAt && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                  <p className="text-sm text-blue-800">
+                    ✅ Welcome email was sent on {new Date(emailSentAt).toLocaleString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                      hour12: true
+                    })}
+                  </p>
+                </div>
+              )}
+
               {/* Actions */}
               <div className="flex gap-3 justify-between pt-4 border-t">
                 <Button
@@ -360,7 +403,7 @@ export function WelcomeEmailModal({
                     ) : (
                       <>
                         <Send className="w-4 h-4" />
-                        Send Welcome Email
+                        {emailSentAt ? 'Resend Welcome Email' : 'Send Welcome Email'}
                       </>
                     )}
                   </Button>

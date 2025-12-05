@@ -76,6 +76,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   // Extract company info from session metadata or customer details
   const companyData = {
     name: metadata.company_name || customer?.name || 'New Company',
+    contact_name: customer?.name || metadata.contact_name || '',
     email: customer?.email || metadata.email || '',
     phone: customer?.phone || metadata.phone || '',
     website: metadata.website || '',

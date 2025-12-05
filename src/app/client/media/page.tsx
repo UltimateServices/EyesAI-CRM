@@ -22,6 +22,7 @@ import {
   EyeOff,
 } from 'lucide-react';
 import { useTheme } from '../ThemeContext';
+import { useCompany } from '../CompanyContext';
 
 const supabase = createClientComponentClient();
 
@@ -54,6 +55,7 @@ const INTERNAL_CATEGORIES = [
 ];
 
 export default function MediaPage() {
+  const { company } = useCompany();
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [dragActive, setDragActive] = useState(false);
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
@@ -74,8 +76,8 @@ export default function MediaPage() {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
 
-  // Major Dumpsters company ID
-  const companyId = '60db5fa2-424a-4a07-91de-963271a4ea31';
+  // Get company ID from context
+  const companyId = company?.id;
 
   useEffect(() => {
     setMounted(true);
@@ -87,13 +89,18 @@ export default function MediaPage() {
       setUser(user);
     };
     getUser();
-    fetchMedia();
   }, []);
+
+  useEffect(() => {
+    if (companyId) {
+      fetchMedia();
+    }
+  }, [companyId]);
 
   const fetchMedia = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/media?companyId=${companyId}`);
+      const response = await fetch(`/api/media?companyId=${companyId}&excludeEyesContent=true`);
       const result = await response.json();
       if (result.data) {
         setMediaItems(result.data);
@@ -294,7 +301,11 @@ export default function MediaPage() {
   };
 
   const filteredMedia = mediaItems.filter(item => {
-    const matchesSearch = item.file_name.toLowerCase().includes(searchQuery.toLowerCase());
+    // Search by category tags instead of file name
+    const matchesSearch = searchQuery === '' ||
+      (item.internal_tags && item.internal_tags.some(tag =>
+        tag.toLowerCase().includes(searchQuery.toLowerCase())
+      ));
     const matchesCategory = activeCategory === 'all' || item.category === activeCategory;
     return matchesSearch && matchesCategory;
   });
@@ -540,14 +551,6 @@ export default function MediaPage() {
                     <SourceBadge source={item.uploaded_by_type} />
                   </div>
                 )}
-              </div>
-              <div className="p-4">
-                <p className={`font-medium truncate text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  {item.file_name}
-                </p>
-                <p className={`text-xs mt-1 ${isDark ? 'text-white/40' : 'text-slate-500'}`}>
-                  {formatFileSize(item.file_size)}
-                </p>
               </div>
             </div>
           ))}

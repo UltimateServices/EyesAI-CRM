@@ -19,7 +19,9 @@ import {
   Bell,
   ChevronDown,
   MessageSquare,
-  UserPlus
+  UserPlus,
+  Users,
+  BadgeCheck
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -141,6 +143,8 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
   const navItems = [
     { href: '/dashboard', icon: LayoutDashboard, label: 'Overview' },
     { href: '/new-clients', icon: UserPlus, label: 'New Clients' },
+    { href: '/discover-clients', icon: Users, label: 'Discover Clients' },
+    { href: '/verified-clients', icon: BadgeCheck, label: 'Verified Clients' },
     { href: '/companies', icon: Building2, label: 'Companies' },
     { href: '/support', icon: MessageSquare, label: 'Support' },
     { href: '/settings', icon: Settings, label: 'Settings' },
